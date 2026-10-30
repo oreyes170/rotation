@@ -1,6 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
+const VERSION = 14; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1298,6 +1299,25 @@ function renderSync(label) {
   renderSync(); go(S.items.length ? 'log' : 'closet');
   const after = Drive.fromRedirect();
   if (after) { go('settings'); renderSync(); if (after === 'backup') backupNow(true); else if (after === 'restore') restoreFromDrive(); else { toast('Connected to Google Drive'); scheduleBackup(); } }
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  $('#title').insertAdjacentHTML('beforeend', ` <button class="ver" id="ver" type="button" title="Check for updates">v${VERSION}</button>`);
+  $('#ver').onclick = async () => { toast('Version ' + VERSION + ' · checking for updates…'); try { await (await navigator.serviceWorker?.getRegistration())?.update(); } catch { } };
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    // when a new version takes over, reload into it (unless a sheet is open, so nothing typed is lost)
+    const hadController = !!navigator.serviceWorker.controller; let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      if ($('#modal').hidden) { reloading = true; location.reload(); } else toast('Update ready. Close this and reopen the app to get it.');
+    });
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  // iOS can still zoom on a quick double tap: stop the zoom but keep the second tap as a tap
+  let lastTap = 0, startXY = null;
+  document.addEventListener('touchstart', e => { const t = e.touches[0]; startXY = e.touches.length === 1 ? [t.clientX, t.clientY] : null; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    const t = e.changedTouches[0], still = startXY && Math.hypot(t.clientX - startXY[0], t.clientY - startXY[1]) < 10;
+    if (!still) return;
+    if (e.timeStamp - lastTap < 350 && !e.target.closest('input, textarea, select')) { e.preventDefault(); e.target.click(); }
+    lastTap = e.timeStamp;
+  }, { passive: false });
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 })();

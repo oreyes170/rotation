@@ -15,7 +15,7 @@
 
 *{box-sizing:border-box}
 html,body{margin:0}
-html{touch-action:manipulation} /* no double-tap zoom; pinch zoom still works */
+*{touch-action:manipulation} /* no double-tap zoom; pinch zoom still works */
 body{background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));}
 img{max-width:100%;display:block}
@@ -27,6 +27,7 @@ h3{margin:0 0 6px;font-size:16px}
   background:var(--bg);border-bottom:1px solid var(--line);
   padding:calc(10px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));}
 .top h1{margin:0;font-size:20px;letter-spacing:-.01em}
+.ver{border:0;background:none;color:var(--muted);font-size:12px;font-weight:500;padding:2px 4px;cursor:pointer;vertical-align:middle}
 .sync{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--muted);cursor:pointer}
 .sync.pending{color:var(--warn);border-color:var(--warn)}
 .sync.done{color:var(--ok)}

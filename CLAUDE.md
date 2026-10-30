@@ -11,7 +11,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
   - `index.html`: the shell, plus a 4-tab bottom nav (Log, Closet, Calendar, Setup).
   - `app.js`: all logic, in one file, organised by section comments.
   - `styles.css`: tokens on `:root` with a dark theme via `prefers-color-scheme`. Phone-first, so check it at 400px wide.
-  - `sw.js`: service worker that serves the app from cache first. **Bump `CACHE` (`rotation-vN`) on every release** or phones keep the old version.
+  - `sw.js`: service worker that serves the app from cache first. **Bump `CACHE` (`rotation-vN`) on every release, and `VERSION` at the top of `app.js` to the same N** (it's shown in the header; tap it to check for updates). A new version installs with fresh files and reloads the app once it takes over.
   - `manifest.webmanifest` and the icons.
 - **Keep it a static app** that works offline. Don't add a server or a build step unless the owner asks.
 
