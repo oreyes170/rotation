@@ -1126,6 +1126,7 @@ async function importPhotos(files, replace) {
 }
 async function importPurchasesCSV(text) {
   const rows = parseCSV(text);
+  if (rows.length && 'type' in rows[0] && !('item' in rows[0]) && !('retailer' in rows[0])) throw new Error('That looks like an items file. Use Import items CSV under Spreadsheet (CSV).');
   const list = rows.map(r => ({ date: csvDate(r.date), retailer: r.retailer || r.store || '', item: r.item || r.name || '', size: r.size || '', color: r.color || r.colour || '', price: num((r.price || '').replace(/[$,]/g, '')) }))
     .filter(p => p.item);
   if (!list.length) throw new Error('No rows with an item column found');
