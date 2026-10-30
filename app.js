@@ -947,7 +947,7 @@ function renderSettings() {
         <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import wear log CSV<input type="file" accept=".csv,text/csv" id="csvWearsIn" hidden></label>
         <button class="ghost" data-a="csvtemplate" type="button">Blank items template</button></div>
       <label class="check"><input type="checkbox" id="csvWearsEst"> When importing a wear log, take those wears off each item’s estimated past wears (they were already counted)</label>
-      <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, location, brand, store, tags, link, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours and materials are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, or same name and type) update it instead of adding a copy, and new types are created automatically. Export also includes wear counts and cost per wear for reference; those columns are ignored on import. Photos stay in the app.<br>
+      <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, location, brand, store, tags, link, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours and materials are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, same <code>link</code>, or same name and type) update it instead of adding a copy. A row with no <code>name</code> only updates the item it matches by <code>id</code> or <code>link</code>, changing just the columns it has, and new types are created automatically. Export also includes wear counts and cost per wear for reference; those columns are ignored on import. Photos stay in the app.<br>
       <b>Wear log CSV</b> columns: <code>date, item_name</code> (or <code>item_id</code>, or the item’s <code>link</code>), optionally <code>outfit</code> to group rows into one outfit and <code>fit, fit_note</code>. Rows with the same date and outfit become one outfit. Imported wears are added to what you already have; a wear already logged for that item and day is skipped.</p>
     </section>`;
   const v = view();
@@ -1073,13 +1073,16 @@ function typeFor(name) {
 async function importItemsCSV(text) {
   const rows = parseCSV(text); let added = 0, updated = 0, skipped = 0;
   for (const r of rows) {
-    const name = r.name || r.item_name || r.item; if (!name) { skipped++; continue; }
-    const typeId = typeFor(r.type || r.category);
-    let it = (r.id && itemById(r.id)) || S.items.find(i => i.name.toLowerCase() === name.toLowerCase() && i.typeId === typeId);
+    const name = r.name || r.item_name || r.item;
+    const byKey = (r.id && itemById(r.id)) || ((r.link || r.url) && itemForPhoto({ link: r.link || r.url }));
+    // a row without a name only updates the item it matches by id or link (e.g. just link + estimated_past_wears)
+    if (!name && !byKey) { skipped++; continue; }
+    const typeId = r.type || r.category || !byKey ? typeFor(r.type || r.category) : byKey.typeId;
+    let it = byKey || S.items.find(i => i.name.toLowerCase() === name.toLowerCase() && i.typeId === typeId);
     const isNew = !it;
     if (isNew) { it = { id: uid(), name, typeId, size: sizeFor(typeId), colors: [], location: '', tryOns: [], brand: '', store: '', tags: [], materials: [], link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
     const has = k => k in r && r[k] !== '';
-    it.name = name; it.typeId = typeId;
+    if (name) it.name = name; it.typeId = typeId;
     if (has('brand')) it.brand = r.brand;
     if (has('size')) it.size = cleanSize(r.size);
     if (has('materials') || has('material')) it.materials = splitTags((r.materials || r.material).replace(/;/g, ','));
