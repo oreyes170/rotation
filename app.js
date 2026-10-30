@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 15; // shown in the header; bump with CACHE in sw.js
+const VERSION = 16; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -113,9 +113,12 @@ const cleanSize = s => String(s || '').replace(/^\s*(wo)?men[’']?s\b\s*/i, '')
 
 /* planned outfits ({planned: true}) never count as wears until they're marked worn */
 const worn = () => S.entries.filter(e => !e.planned);
+/* entry.noWear: items the owner marked "don't count as a wear" (e.g. a shirt kept on overnight).
+   They show on the calendar and the day's outfit, but never count toward wears, limits, last worn or pairings. */
+const counts = (e, id) => e.itemIds.includes(id) && !(e.noWear || []).includes(id);
 function wearDates(itemId) {
   const set = new Set();
-  for (const e of worn()) if (e.itemIds.includes(itemId)) set.add(e.date);
+  for (const e of worn()) if (counts(e, itemId)) set.add(e.date);
   return [...set].sort();
 }
 function effPrice(i) { const d = num(i.discountPrice), p = num(i.price); return d != null ? d : p; }
@@ -160,21 +163,21 @@ function stats(item) {
 function combos(itemId, from, to) {
   const m = new Map();
   for (const e of worn()) {
-    if (!e.itemIds.includes(itemId)) continue;
+    if (!counts(e, itemId)) continue;
     if (from && e.date < from) continue; if (to && e.date > to) continue;
-    for (const o of e.itemIds) if (o !== itemId) { if (!m.has(o)) m.set(o, new Set()); m.get(o).add(e.date); }
+    for (const o of e.itemIds) if (o !== itemId && counts(e, o)) { if (!m.has(o)) m.set(o, new Set()); m.get(o).add(e.date); }
   }
   return [...m].map(([id, ds]) => ({ item: itemById(id), n: ds.size, last: [...ds].sort().pop() }))
     .filter(x => x.item).sort((a, b) => b.n - a.n || (b.last > a.last ? 1 : -1));
 }
 function pairCount(a, b) {
-  const s = new Set(); for (const e of worn()) if (e.itemIds.includes(a) && e.itemIds.includes(b)) s.add(e.date); return s.size;
+  const s = new Set(); for (const e of worn()) if (counts(e, a) && counts(e, b)) s.add(e.date); return s.size;
 }
 /* availability on a given day. For a future day, earlier plans count too, so a plan can't break a wear limit. */
 function statusOn(item, date) {
   if (item.retired) return 'retired';
   if (date <= today()) return rotation(wearDates(item.id), limitOf(item), date).resting ? 'resting' : 'active';
-  const dates = [...new Set(S.entries.filter(e => e.itemIds.includes(item.id) && (!e.planned || e.date < date)).map(e => e.date))].sort();
+  const dates = [...new Set(S.entries.filter(e => counts(e, item.id) && (!e.planned || e.date < date)).map(e => e.date))].sort();
   return rotation(dates, limitOf(item), date).resting ? 'resting' : 'active';
 }
 const nextPlan = itemId => S.entries.filter(e => e.planned && e.date >= today() && e.itemIds.includes(itemId)).map(e => e.date).sort()[0];
@@ -375,7 +378,7 @@ const slotName = typeId => groupKey(typeId).startsWith('g:') ? groupName(groupKe
 const logState = { date: today(), draft: null };
 function newDraft(templateId) {
   const tpl = S.templates.find(t => t.id === templateId) || (templateId === '' ? null : S.templates[0]);
-  return { templateId: tpl ? tpl.id : '', slots: tpl ? tpl.slots.map(typeId => ({ typeId, itemId: null })) : [], extra: [], editingId: null };
+  return { templateId: tpl ? tpl.id : '', slots: tpl ? tpl.slots.map(typeId => ({ typeId, itemId: null })) : [], extra: [], noWear: false, editingId: null };
 }
 function dayCoverSrc(date) {
   const c = S.days[date]?.cover;
@@ -421,12 +424,13 @@ function renderLog() {
     ${future ? (planE.length ? '' : '<h2>Nothing planned yet</h2>') + '<p class="help">Planned outfits don’t count as wears. On the day, open it here and tap “Wore it”.</p>' : `<h2>${wornE.length ? 'Worn this day' : 'Nothing logged this day'}</h2>`}
     ${wornE.map(e => `<section class="card entry"><div class="spread"><div class="label">${esc(S.templates.find(t => t.id === e.templateId)?.name || 'Outfit')}</div>
         <div class="row"><button class="ghost" data-edit="${e.id}" type="button">Edit</button><button class="danger" data-del="${e.id}" type="button">Delete</button></div></div>
-        <div class="pieces">${e.itemIds.map(id => { const it = itemById(id); if (!it) return ''; const f = e.fits?.[id]; return `<button class="piece" data-fit="${id}" data-entry="${e.id}" type="button">${thumb(it)}<span>${esc(it.name)}</span><span class="fit ${f?.r ? 'f-' + f.r : ''}">${f?.r ? esc(fitLabel(f.r)) : 'Rate fit'}</span></button>`; }).join('')}</div></section>`).join('')}
+        <div class="pieces">${e.itemIds.map(id => { const it = itemById(id); if (!it) return ''; const f = e.fits?.[id]; return `<button class="piece" data-fit="${id}" data-entry="${e.id}" type="button">${thumb(it)}<span>${esc(it.name)}</span>${(e.noWear || []).includes(id) ? '<span class="nowear">not counted</span>' : ''}<span class="fit ${f?.r ? 'f-' + f.r : ''}">${f?.r ? esc(fitLabel(f.r)) : 'Rate fit'}</span></button>`; }).join('')}</div></section>`).join('')}
     <h2>${dr.editingId ? (planE.some(e => e.id === dr.editingId) ? 'Edit plan' : 'Edit outfit') : future ? 'Plan an outfit' : 'Log an outfit'}</h2>
     <section class="card">
       <label class="field"><span>Template</span><select id="tpl">${S.templates.map(t => `<option value="${t.id}" ${t.id === dr.templateId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}<option value="" ${!dr.templateId ? 'selected' : ''}>No template</option></select></label>
       <div class="slots">${dr.slots.map(slotHtml).join('')}${dr.extra.map(extraHtml).join('')}<button class="slot add" data-a="addextra" type="button">＋ Add item</button></div>
       ${pairs.length ? `<div class="pairs">Worn together before: ${pairs.join(' · ')}</div>` : ''}
+      ${future ? '' : `<label class="check small" style="margin-top:10px"><input type="checkbox" id="noWear" ${dr.noWear ? 'checked' : ''}> Don’t count as a wear (still shows on the calendar)</label>`}
       <div class="row end">${dr.editingId ? '<button class="ghost" data-a="canceledit" type="button">Cancel</button>' : ''}<button class="primary" data-a="saveentry" type="button">${dr.editingId ? 'Save changes' : future ? 'Save plan' : 'Save outfit'}</button></div>
     </section>`;
   const v = view();
@@ -449,14 +453,16 @@ function renderLog() {
   $('[data-a=saveentry]', v).onclick = async () => {
     const ids = [...new Set([...dr.slots.map(s => s.itemId), ...dr.extra].filter(Boolean))];
     if (!ids.length) return toast('Pick at least one item');
+    const nw = $('#noWear', v)?.checked;
     if (dr.editingId) {
       const e = S.entries.find(x => x.id === dr.editingId);
-      Object.assign(e, { templateId: dr.templateId, slots: dr.slots.map(s => ({ ...s })), itemIds: ids });
-    } else S.entries.push({ id: uid(), date: d, templateId: dr.templateId, slots: dr.slots.map(s => ({ ...s })), itemIds: ids, created: Date.now(), ...(future ? { planned: true } : {}) });
+      // the box covers the whole outfit; leaving it unticked keeps any single pieces marked from the day's view
+      Object.assign(e, { templateId: dr.templateId, slots: dr.slots.map(s => ({ ...s })), itemIds: ids, noWear: nw ? ids : (e.noWear || []).filter(id => ids.includes(id) && !dr.noWear) });
+    } else S.entries.push({ id: uid(), date: d, templateId: dr.templateId, slots: dr.slots.map(s => ({ ...s })), itemIds: ids, ...(nw ? { noWear: ids } : {}), created: Date.now(), ...(future ? { planned: true } : {}) });
     const wasEdit = !!dr.editingId;
     logState.draft = newDraft(dr.templateId); await save('entries'); renderLog();
     toast(wasEdit ? 'Outfit updated' : future ? 'Plan saved' : 'Outfit saved');
-    if (!future) restToast(ids, d);
+    if (!future && !nw) restToast(ids, d);
   };
   $$('[data-wore]', v).forEach(b => b.onclick = async () => {
     const e = S.entries.find(x => x.id === b.dataset.wore); delete e.planned;
@@ -472,7 +478,7 @@ function renderLog() {
     const tpl = S.templates.find(t => t.id === e.templateId);
     const slots = (e.slots && e.slots.length) ? e.slots.map(s => ({ ...s })) : (tpl ? tpl.slots.map(typeId => ({ typeId, itemId: null })) : []);
     const inSlots = new Set(slots.map(s => s.itemId));
-    logState.draft = { templateId: e.templateId || '', slots, extra: e.itemIds.filter(id => !inSlots.has(id)), editingId: e.id };
+    logState.draft = { templateId: e.templateId || '', slots, extra: e.itemIds.filter(id => !inSlots.has(id)), noWear: e.itemIds.every(id => (e.noWear || []).includes(id)), editingId: e.id };
     renderLog(); $('#tpl').scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
   $$('[data-del]', v).forEach(b => twoStep(b, 'Tap to confirm', async () => {
@@ -780,11 +786,17 @@ function openFit({ itemId, entryId = null, date = today(), tryOnId = null }) {
     ${e ? '' : `<label class="field"><span>Date</span><input type="date" id="foDate" value="${esc(t?.date || date)}"></label><p class="help">A try-on records fit without counting as a wear.</p>`}
     <div class="chips" style="flex-wrap:wrap" id="fitChips">${FITS.map(([k, l]) => `<button class="chip ${r === k ? 'on' : ''}" data-r="${k}" type="button">${l}</button>`).join('')}</div>
     <label class="field"><span>Note (optional)</span><input id="foNote" value="${esc(cur.note || '')}" placeholder="e.g. tight across the chest, sleeves fine"></label>
+    ${e && !e.planned ? `<label class="check" style="margin-top:10px"><input type="checkbox" id="foNoWear" ${(e.noWear || []).includes(itemId) ? 'checked' : ''}> Don’t count as a wear (still shows on the calendar)</label>` : ''}
     <div class="row end">${(e && cur.r) || t ? '<button class="danger" data-a="clear" type="button">Remove</button>' : ''}<button class="ghost" data-a="item" type="button">Open item</button><button class="primary" data-a="save" type="button">Save</button></div>`, sh => {
     $$('[data-r]', sh).forEach(b => b.onclick = () => { r = b.dataset.r; $$('[data-r]', sh).forEach(x => x.classList.toggle('on', x === b)); });
     $('[data-a=item]', sh).onclick = () => openDetail(itemId);
+    const nw = $('#foNoWear', sh);
+    if (nw) nw.onchange = async () => {
+      e.noWear = (e.noWear || []).filter(x => x !== itemId); if (nw.checked) e.noWear.push(itemId);
+      await save('entries'); toast(nw.checked ? 'Not counted as a wear' : 'Counted as a wear'); refresh();
+    };
     $('[data-a=save]', sh).onclick = async () => {
-      if (!r) return toast('Pick how it fit');
+      if (!r) return nw ? closeModal() : toast('Pick how it fit');
       const note = $('#foNote', sh).value.trim();
       if (e) { e.fits = e.fits || {}; e.fits[itemId] = { r, note }; await save('entries'); }
       else {
@@ -831,7 +843,7 @@ function renderCalendar() {
   const [y, m] = cal.month.split('-').map(Number);
   const first = new Date(y, m - 1, 1), pad = first.getDay(), daysIn = new Date(y, m, 0).getDate(), t = today();
   const monthName = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  const counts = new Map();
+  const tally = new Map();
   let cells = '';
   for (let i = 0; i < pad; i++) cells += '<div class="cal-cell out"></div>';
   for (let d = 1; d <= daysIn; d++) {
@@ -844,14 +856,14 @@ function renderCalendar() {
       inner = src ? `<img src="${src}" alt="">` : (has ? `<span class="txt">${esc(ids.map(itemById).filter(Boolean).map(i => i.name).join(', '))}</span>` : '');
     } else {
       const its = ids.map(itemById).filter(i => i && groupKey(i.typeId) === cal.mode);
-      if (!plan) its.forEach(i => counts.set(i.id, (counts.get(i.id) || 0) + 1));
+      if (!plan) its.forEach(i => { if (dayE.some(e => !e.planned && counts(e, i.id))) tally.set(i.id, (tally.get(i.id) || 0) + 1); });
       has = its.length > 0;
       if (its.length) inner = (its[0].photo ? `<img src="${its[0].photo}" alt="">` : `<span class="txt">${esc(its[0].name)}</span>`) + (its.length > 1 ? `<span class="more">+${its.length - 1}</span>` : '');
     }
     cells += `<button class="cal-cell ${has ? 'has' : ''} ${has && plan ? 'plan' : ''} ${ds === t ? 'today' : ''}" data-d="${ds}" type="button" aria-label="${prettyDate(ds)}${has && plan ? ', planned' : ''}"><span class="n">${d}</span>${inner}</button>`;
   }
   const sum = cal.mode === 'cover' ? '' : (() => {
-    const list = [...counts].map(([id, n]) => ({ it: itemById(id), n })).sort((a, b) => b.n - a.n);
+    const list = [...tally].map(([id, n]) => ({ it: itemById(id), n })).sort((a, b) => b.n - a.n);
     return `<section class="card calsum"><div class="label">${esc(groupName(cal.mode))} this month</div>${list.length ? `<ul>${list.map(x => `<li data-item="${x.it.id}" style="cursor:pointer"><span>${esc(x.it.name)}</span><b>${x.n}×</b></li>`).join('')}</ul>` : '<p class="muted small">None worn this month.</p>'}</section>`;
   })();
   view().innerHTML = `
@@ -949,7 +961,7 @@ function renderSettings() {
         <button class="ghost" data-a="csvtemplate" type="button">Blank items template</button></div>
       <label class="check"><input type="checkbox" id="csvWearsEst"> When importing a wear log, take those wears off each item’s estimated past wears (they were already counted)</label>
       <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, location, brand, store, tags, link, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours and materials are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, same <code>link</code>, or same name and type) update it instead of adding a copy. A row with no <code>name</code> only updates the item it matches by <code>id</code> or <code>link</code>, changing just the columns it has, and new types are created automatically. Export also includes wear counts and cost per wear for reference; those columns are ignored on import. Photos stay in the app.<br>
-      <b>Wear log CSV</b> columns: <code>date, item_name</code> (or <code>item_id</code>, or the item’s <code>link</code>), optionally <code>outfit</code> to group rows into one outfit and <code>fit, fit_note</code>. Rows with the same date and outfit become one outfit. Imported wears are added to what you already have; a wear already logged for that item and day is skipped.</p>
+      <b>Wear log CSV</b> columns: <code>date, item_name</code> (or <code>item_id</code>, or the item’s <code>link</code>), optionally <code>outfit</code> to group rows into one outfit, <code>fit, fit_note</code>, and <code>not_counted</code> (yes for a day that isn’t a wear). Rows with the same date and outfit become one outfit. Imported wears are added to what you already have; a wear already logged for that item and day is skipped.</p>
     </section>`;
   const v = view();
   // types
@@ -1059,9 +1071,9 @@ function itemsCSV() {
   })]);
 }
 function wearsCSV() {
-  const rows = [['date', 'outfit', 'template', 'item_id', 'item_name', 'type', 'fit', 'fit_note']];
+  const rows = [['date', 'outfit', 'template', 'item_id', 'item_name', 'type', 'fit', 'fit_note', 'not_counted']];
   [...worn()].sort((a, b) => a.date.localeCompare(b.date)).forEach(e => e.itemIds.forEach(id => {
-    const it = itemById(id), f = e.fits?.[id]; rows.push([e.date, e.id, S.templates.find(t => t.id === e.templateId)?.name || '', id, it?.name || '', typeName(it?.typeId), f?.r ? fitLabel(f.r) : '', f?.note || '']);
+    const it = itemById(id), f = e.fits?.[id]; rows.push([e.date, e.id, S.templates.find(t => t.id === e.templateId)?.name || '', id, it?.name || '', typeName(it?.typeId), f?.r ? fitLabel(f.r) : '', f?.note || '', counts(e, id) ? '' : 'yes']);
   }));
   return toCSV(rows);
 }
@@ -1151,16 +1163,17 @@ async function importWearsCSV(text, { fromEstimates = false } = {}) {
     if (!it) { missing++; continue; }
     if (had.has(date + '|' + it.id)) { dupes++; continue; }
     had.add(date + '|' + it.id);
-    if (fromEstimates) it.estWears = String(Math.max(0, (parseInt(it.estWears) || 0) - 1));
+    if (fromEstimates && !truthy(r.not_counted)) it.estWears = String(Math.max(0, (parseInt(it.estWears) || 0) - 1));
     const key = date + '|' + (r.outfit || r.outfit_id || '');
-    if (!groups.has(key)) groups.set(key, { date, ids: new Set(), tpl: r.template, fits: {} });
+    if (!groups.has(key)) groups.set(key, { date, ids: new Set(), tpl: r.template, fits: {}, noWear: [] });
     groups.get(key).ids.add(it.id);
+    if (truthy(r.not_counted)) groups.get(key).noWear.push(it.id);
     const fr = FITS.find(f => f[1].toLowerCase() === (r.fit || '').toLowerCase() || f[0] === (r.fit || '').toLowerCase());
     if (fr) groups.get(key).fits[it.id] = { r: fr[0], note: r.fit_note || '' };
   }
   for (const g of groups.values()) {
     const tpl = S.templates.find(t => t.name.toLowerCase() === (g.tpl || '').toLowerCase());
-    S.entries.push({ id: uid(), date: g.date, templateId: tpl?.id || '', slots: [], itemIds: [...g.ids], fits: g.fits, created: Date.now(), imported: true });
+    S.entries.push({ id: uid(), date: g.date, templateId: tpl?.id || '', slots: [], itemIds: [...g.ids], fits: g.fits, ...(g.noWear.length ? { noWear: g.noWear } : {}), created: Date.now(), imported: true });
   }
   await save('entries', 'items'); return { outfits: groups.size, missing, dupes };
 }

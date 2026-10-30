@@ -176,4 +176,5 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
 
 .fab{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:7;border-radius:999px!important;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 .fit{font-size:11px;font-weight:600;color:var(--muted)}
+.nowear{font-size:11px;color:var(--muted);font-style:italic}
 .fit.f-good{color:var(--ok)} .fit.f-snug,.fit.f-loose{color:var(--warn)} .fit.f-too-tight,.fit.f-too-loose{color:var(--danger)}
