@@ -56,6 +56,12 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 1. **Photo import from Whering:** the item image URLs are on Google Cloud Storage. Oliver parked this.
 2. **Photos as separate files in a Drive folder** ("Rotation photos"), so the backup JSON stays small. Right now photos sit inside the backup, which gets big (about 200 photos ≈ 15–20 MB).
 3. **Merging when both phone and computer have changes.** Today a restore replaces everything on the device, with no merge.
+4. **A real iPhone app.** Oliver is keeping the web app while he tests and tweaks. When he's ready, the plan is:
+   - Wrap the existing files with Capacitor and install the app on his phone through TestFlight, not the App Store. That needs the Apple Developer Program ($99/year).
+   - Build on a Mac with Xcode, or in the cloud with a GitHub Actions macOS runner or Codemagic.
+   - Google Identity Services sign-in doesn't work inside the app's web view, so the Drive backup needs a native Google sign-in plugin, or a switch to iCloud.
+   - The service worker isn't needed inside the app, and app storage isn't cleared by iOS.
+   - Until then, keep the app static with no build step, and keep the Drive and sign-in code in one place so it's easy to swap out.
 
 ## Testing
 - There are no automated tests in the repo. Test with Playwright against a local server: `python3 -m http.server`, then load the page and drive the UI.
