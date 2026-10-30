@@ -24,7 +24,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
   - **`filters`:** `{id, name, typeIds[], tags[]}`. These are quick filters; every type also gets its own chip.
   - **`locations`:** `{id, name}`, defaulting to My place, Mom's and Girlfriend's.
   - **`purchases`:** past purchases imported from CSV, used only for auto-fill suggestions.
-  - **`settings`:** `recentDays`, `cpwIncludesEstimate`, `clientId`, `driveFileId`, `autoBackup`, `lastChange`, `lastBackup`, `logLocation`.
+  - **`settings`:** `recentDays`, `cpwIncludesEstimate`, `clientId`, `driveFileId`, `autoBackup`, `lastChange`, `lastBackup`, `logLocation`, `tagLibrary` (extra tags to suggest, added in Setup), `schema` (data version; `load()` runs one-off upgrades when it's behind).
 - **Backup and import:** `snapshot()` / `applySnapshot()` handle JSON backups. A restore replaces everything except the Drive settings.
 
 ## Rules Oliver asked for (don't change without asking)
@@ -33,7 +33,10 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Cost per wear** uses the discount price if there is one, otherwise the purchase price.
 - **Wear limit:** after N tracked wears the item rests for M months (calendar months from the last counted wear), then a new cycle starts. `rotation()` recalculates this from the log every time, so editing history stays consistent. Wears logged during a rest still count toward totals but not toward the cycle. A per-item limit overrides the type's limit.
 - **Fit** has 5 levels: too-tight, snug, good, loose, too-loose, scored -2 to 2. Each item records a fit per wear (`entry.fits`) and per try-on (`item.tryOns`). Try-ons do not count as wears. He's tracking fit while losing weight, so the trend (recent vs earlier fits) matters.
-- **Location:** where an item is kept. The "Dressing at" choice on the Log screen filters the item picker to that place.
+- **Location:** where an item is kept. The "Dressing at" choice on the Log screen filters the item picker to that place. Every "Kept at" menu has "＋ New place…" to add one on the spot.
+- **Size:** a new item gets its type's default size (T-shirt defaults to XL), or else the size used most for that type.
+- **Tags** are entered as chips. Known tags (on items, plus `tagLibrary`) are suggested as you type, including close spellings, and an unknown tag is marked "new" so typos stand out.
+- **Retired** means gone for good and is set by hand. **Resting** is temporary and comes from the wear limit.
 - **The item picker** hides resting and retired items by default and sorts by least recently worn.
 - **Auto-fill:**
   - Type is guessed from words in the name.

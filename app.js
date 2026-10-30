@@ -54,14 +54,14 @@ const COLLS = ['types', 'items', 'entries', 'templates', 'days', 'filters', 'loc
 let S = {};
 
 function defaults() {
-  const mk = name => ({ id: uid(), name, limit: null, defaultSize: '' });
+  const mk = name => ({ id: uid(), name, limit: null, defaultSize: name === 'T-shirt' ? 'XL' : '' });
   const types = ['T-shirt', 'Work shirt', 'Cap', 'Tie', 'Shoes', 'Pants', 'Jacket', 'Other'].map(mk);
   const id = n => types.find(t => t.name === n).id;
   return {
     types, items: [], entries: [], days: {}, filters: [], purchases: [],
     locations: ['My place', 'Mom’s', 'Girlfriend’s'].map(name => ({ id: uid(), name })),
     templates: [{ id: uid(), name: 'Daily', slots: [id('T-shirt'), id('Work shirt'), id('Cap'), id('Tie')] }],
-    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '' }
+    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], schema: 2 }
   };
 }
 
@@ -69,8 +69,13 @@ async function load() {
   await DB.open();
   const d = defaults(); let any = false;
   for (const k of COLLS) { const v = await DB.get(k); if (v !== undefined) { S[k] = v; any = true; } else S[k] = d[k]; }
-  S.settings = { ...d.settings, ...S.settings };
+  S.settings = { ...d.settings, schema: 1, ...S.settings };
   if (!any) await DB.setMany(Object.fromEntries(COLLS.map(k => [k, S[k]])));
+  if (S.settings.schema < 2) {
+    // v2: T-shirts default to XL unless a size was already chosen
+    const tee = S.types.find(t => t.name.toLowerCase() === 't-shirt'); if (tee && !tee.defaultSize) tee.defaultSize = 'XL';
+    S.settings.schema = 2; await DB.setMany({ types: S.types, settings: S.settings });
+  }
 }
 
 async function save(...keys) {
@@ -146,6 +151,21 @@ const FITS = [['too-tight', 'Too tight', -2], ['snug', 'Snug', -1], ['good', 'Ju
 const fitLabel = r => FITS.find(f => f[0] === r)?.[1] || '';
 const fitScore = r => FITS.find(f => f[0] === r)?.[2];
 const locName = id => S.locations.find(l => l.id === id)?.name || '';
+const locOptions = sel => `<option value="">Not set</option>${S.locations.map(l => `<option value="${l.id}" ${l.id === sel ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="+new">＋ New place…</option>`;
+/* "＋ New place…" in a location menu asks for a name, saves the place and selects it */
+function wireLocSelect(sel, onPick) {
+  let prev = sel.value;
+  sel.onchange = async () => {
+    if (sel.value === '+new') {
+      const name = (prompt('Name of the new place') || '').trim();
+      if (!name) { sel.value = prev; return; }
+      let l = S.locations.find(x => x.name.toLowerCase() === name.toLowerCase());
+      if (!l) { l = { id: uid(), name }; S.locations.push(l); await save('locations'); toast('Added ' + name); }
+      sel.innerHTML = locOptions(l.id);
+    }
+    prev = sel.value; onPick && onPick(sel.value);
+  };
+}
 /* every fit note for an item: from logged wears and from try-ons (try-ons do not count as wears) */
 function fitHistory(itemId) {
   const out = [];
@@ -209,7 +229,50 @@ function purchaseMatches(q) {
   return S.purchases.map(p => { const hay = (p.item + ' ' + p.retailer + ' ' + p.color).toLowerCase(); return { p, score: words.filter(w => hay.includes(w)).length }; })
     .filter(x => x.score >= Math.min(2, words.length)).sort((a, b) => b.score - a.score || b.p.date.localeCompare(a.p.date)).slice(0, 6).map(x => x.p);
 }
+function sizeFor(typeId) {
+  const t = typeById(typeId); if (t?.defaultSize) return t.defaultSize;
+  const n = {}; S.items.forEach(i => { if (i.typeId === typeId && i.size) n[i.size] = (n[i.size] || 0) + 1; });
+  return Object.entries(n).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+}
 function allTags() { const s = new Set(); S.items.forEach(i => (i.tags || []).forEach(t => s.add(t))); return [...s].sort(); }
+/* tags on items plus the saved tag list from Setup */
+function knownTags() { return [...new Set([...allTags(), ...(S.settings.tagLibrary || [])])].sort(); }
+function editDist(a, b) {
+  let row = [...Array(b.length + 1).keys()];
+  for (let i = 1; i <= a.length; i++) { let prev = row[0]; row[0] = i; for (let j = 1; j <= b.length; j++) { const t = row[j]; row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; } }
+  return row[b.length];
+}
+/* tag entry: each tag becomes a chip. Known tags are suggested as you type (close spellings too),
+   and a tag that matches nothing known is marked "new" so typos stand out. Returns a getter. */
+function tagField(box, initial) {
+  const tags = [...initial], known = knownTags(), isKnown = t => known.includes(t);
+  const counts = {}; S.items.forEach(i => (i.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  box.innerHTML = `<div class="tagbox"><span class="tagchips"></span><input class="taginput" placeholder="Type a tag" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done"></div><div class="tagsugg"></div>`;
+  const chips = $('.tagchips', box), inp = $('.taginput', box), sugg = $('.tagsugg', box);
+  const push = t => { t = t.trim().toLowerCase(); if (t && !tags.includes(t)) tags.push(t); };
+  const draw = () => {
+    chips.innerHTML = tags.map((t, i) => `<button type="button" class="tagchip ${isKnown(t) ? '' : 'new'}" data-i="${i}" aria-label="Remove ${esc(t)}">${esc(t)}${isKnown(t) ? '' : ' <small>new</small>'} <span aria-hidden="true">✕</span></button>`).join('');
+    const q = inp.value.trim().toLowerCase();
+    let list, close = [];
+    if (q) {
+      list = known.filter(t => t.includes(q)).sort((a, b) => b.startsWith(q) - a.startsWith(q) || a.localeCompare(b));
+      if (q.length >= 3) close = known.filter(t => !t.includes(q) && editDist(q, t) <= (q.length > 5 ? 2 : 1));
+    } else list = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+    list = [...list, ...close].filter(t => !tags.includes(t)).slice(0, 12);
+    sugg.innerHTML = (q && !list.length ? '' : `<span class="muted small">${q ? (close.length && !list.some(t => t.includes(q)) ? 'Did you mean' : 'Your tags') : list.length ? 'Most used' : 'Start typing to see your tags'} </span>`)
+      + list.map(t => `<button class="tag" data-add="${esc(t)}" type="button">+ ${esc(t)}</button>`).join('')
+      + (q && !isKnown(q) && !tags.includes(q) ? `<button class="tag new" data-add="${esc(q)}" type="button">+ new tag “${esc(q)}”</button>` : '');
+  };
+  chips.onclick = e => { const b = e.target.closest('[data-i]'); if (b) { tags.splice(Number(b.dataset.i), 1); draw(); } };
+  sugg.onclick = e => { const b = e.target.closest('[data-add]'); if (b) { push(b.dataset.add); inp.value = ''; draw(); inp.focus(); } };
+  inp.oninput = () => { if (inp.value.includes(',')) { const parts = inp.value.split(','); inp.value = parts.pop().trimStart(); parts.forEach(push); } draw(); };
+  inp.onkeydown = e => {
+    if (e.key === 'Enter') { e.preventDefault(); push(inp.value); inp.value = ''; draw(); }
+    else if (e.key === 'Backspace' && !inp.value && tags.length) { tags.pop(); draw(); }
+  };
+  draw();
+  return () => { push(inp.value); inp.value = ''; return [...tags]; };
+}
 function distinct(field) { return [...new Set(S.items.map(i => (i[field] || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
 function allColours() { const s = new Set(PALETTE.map(p => p[0])); S.items.forEach(i => (i.colors || []).forEach(c => s.add(c))); return [...s].sort(); }
 
@@ -502,7 +565,7 @@ function openDetail(id, range = { from: '', to: '' }) {
       <div class="muted small">${esc([typeName(it.typeId), it.size, it.brand, it.store].filter(Boolean).join(' · '))}</div>
       ${(it.colors || []).length ? `<div class="small">${esc(it.colors.join(', '))}</div>` : ''}
       <div>${(it.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
-      <label class="small muted" style="display:flex;gap:6px;align-items:center">Kept at <select id="dLoc" style="width:auto;padding:4px 8px"><option value="">Not set</option>${S.locations.map(l => `<option value="${l.id}" ${l.id === it.location ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>
+      <label class="small muted" style="display:flex;gap:6px;align-items:center">Kept at <select id="dLoc" style="width:auto;padding:4px 8px">${locOptions(it.location)}</select></label>
       <div class="small">${effPrice(it) != null ? `Paid ${money(effPrice(it))}${num(it.discountPrice) != null && num(it.price) != null ? ` <span class="muted">(list ${money(num(it.price))})</span>` : ''}` : '<span class="muted">No price yet</span>'}${it.purchaseDate ? ` · bought ${prettyDate(it.purchaseDate)}` : ''}</div>
       <div class="small">${esc(limTxt)}</div><div class="small"><b>${esc(rotTxt)}</b></div>
       ${it.notes ? `<div class="small muted">${esc(it.notes)}</div>` : ''}
@@ -529,7 +592,7 @@ function openDetail(id, range = { from: '', to: '' }) {
     <h2>Wear history</h2>
     ${st.dates.length ? `<div class="hist">${[...st.dates].reverse().map(prettyDate).join('<br>')}</div>` : '<p class="muted small">No tracked wears yet.</p>'}`, sh => {
     $('[data-a=edit]', sh).onclick = () => openEditor(it);
-    $('#dLoc', sh).onchange = async e => { it.location = e.target.value; await save('items'); toast(it.location ? 'Now kept at ' + locName(it.location) : 'Location cleared'); if (tab === 'closet') refresh(); };
+    wireLocSelect($('#dLoc', sh), async v => { it.location = v; await save('items'); toast(it.location ? 'Now kept at ' + locName(it.location) : 'Location cleared'); if (tab === 'closet') refresh(); });
     $('[data-a=tryon]', sh).onclick = () => openFit({ itemId: id });
     $$('[data-fe]', sh).forEach(li => li.onclick = () => openFit({ itemId: id, entryId: li.dataset.fe }));
     $$('[data-ft]', sh).forEach(li => li.onclick = () => openFit({ itemId: id, tryOnId: li.dataset.ft }));
@@ -549,7 +612,7 @@ function openDetail(id, range = { from: '', to: '' }) {
 function openEditor(item, { typeId = null, onSave } = {}) {
   const isNew = !item;
   const startType = typeId || S.types[0]?.id;
-  const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brand: '', store: '', size: typeById(startType)?.defaultSize || '', colors: [], location: S.settings.logLocation || '', tags: [], price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
+  const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brand: '', store: '', size: sizeFor(startType), colors: [], location: S.settings.logLocation || '', tags: [], price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
   let photo = it.photo, typeTouched = !isNew || !!typeId;
   const dl = (id, vals) => `<datalist id="${id}">${vals.map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
   openModal(`${head(isNew ? 'New item' : 'Edit item')}
@@ -560,22 +623,21 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="field full"><span>Name</span><input id="fName" value="${esc(it.name)}" placeholder="e.g. Navy dot oxford" autocomplete="off"></label>
       <div class="full" id="edSugg"></div>
       <label class="field"><span>Type</span><select id="fType">${S.types.map(t => `<option value="${t.id}" ${t.id === it.typeId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
-      <label class="field"><span>Size</span><input id="fSize" list="dlSize" value="${esc(it.size)}" placeholder="${esc(typeById(it.typeId)?.defaultSize || 'e.g. XL')}"></label>
+      <label class="field"><span>Size</span><input id="fSize" list="dlSize" value="${esc(it.size)}" placeholder="${esc(sizeFor(it.typeId) || 'e.g. XL')}"></label>
       <label class="field"><span>Brand</span><input id="fBrand" list="dlBrand" value="${esc(it.brand)}"></label>
       <label class="field"><span>Store purchased</span><input id="fStore" list="dlStore" value="${esc(it.store)}"></label>
       <label class="field full"><span>Colours (comma separated)</span><input id="fColors" value="${esc((it.colors || []).join(', '))}" placeholder="navy, white"></label>
       <div class="full tagsugg" id="colSugg"></div>
-      <label class="field"><span>Kept at</span><select id="fLoc"><option value="">Not set</option>${S.locations.map(l => `<option value="${l.id}" ${l.id === it.location ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>Kept at</span><select id="fLoc">${locOptions(it.location)}</select></label>
       <label class="field"><span>Purchase date</span><input type="date" id="fDate" value="${esc(it.purchaseDate)}"></label>
       <label class="field"><span>Purchase price ($)</span><input type="number" step="0.01" min="0" id="fPrice" value="${esc(it.price)}"></label>
       <label class="field"><span>Discount price paid ($)</span><input type="number" step="0.01" min="0" id="fDisc" value="${esc(it.discountPrice)}"></label>
-      <label class="field full"><span>Tags (comma separated)</span><input id="fTags" value="${esc((it.tags || []).join(', '))}" placeholder="work, concert, graphic"></label>
-      <div class="full tagsugg">${allTags().map(t => `<button class="tag" data-tag="${esc(t)}" type="button">${esc(t)}</button>`).join('')}</div>
+      <div class="field full"><span>Tags</span><div id="fTags"></div></div>
       <label class="field full"><span>Estimated wears before you started tracking</span><input type="number" min="0" step="1" id="fEst" value="${esc(it.estWears)}" placeholder="0"></label>
       <label class="field"><span>Wear limit (wears)</span><input type="number" min="1" step="1" id="fLimW" value="${esc(it.limit?.wears ?? '')}" placeholder="type default"></label>
       <label class="field"><span>Then rest (months)</span><input type="number" min="0" step="1" id="fLimM" value="${esc(it.limit?.restMonths ?? '')}" placeholder="type default"></label>
       <label class="field full"><span>Notes</span><textarea id="fNotes">${esc(it.notes)}</textarea></label>
-      <label class="check full"><input type="checkbox" id="fRet" ${it.retired ? 'checked' : ''}> Retired (no longer in the rotation)</label>
+      <label class="check full"><input type="checkbox" id="fRet" ${it.retired ? 'checked' : ''}> Retired: gone for good (given away, worn out). Not the same as resting after a wear limit.</label>
     </div>
     <p class="help">Estimated wears count toward total wears${S.settings.cpwIncludesEstimate ? ' and cost per wear' : ''}. They never change your tracked history, recent-day counts or wear limits.</p>
     ${dl('dlBrand', distinct('brand'))}${dl('dlStore', [...new Set([...distinct('store'), ...S.purchases.map(p => p.retailer)])].filter(Boolean).sort())}${dl('dlSize', [...new Set([...distinct('size'), ...S.types.map(t => t.defaultSize).filter(Boolean)])].sort())}
@@ -589,10 +651,10 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       $$('[data-col]', box).forEach(b => b.onclick = () => addTo(colIn, b.dataset.col));
     };
     const setType = id => {
-      const oldDef = typeById(typeSel.value)?.defaultSize || '';
+      const oldDef = sizeFor(typeSel.value);
       typeSel.value = id;
-      if (!sizeIn.value || sizeIn.value === oldDef) sizeIn.value = typeById(id)?.defaultSize || '';
-      sizeIn.placeholder = typeById(id)?.defaultSize || 'e.g. XL';
+      if (!sizeIn.value || sizeIn.value === oldDef) sizeIn.value = sizeFor(id);
+      sizeIn.placeholder = sizeFor(id) || 'e.g. XL';
     };
     typeSel.onchange = () => { typeTouched = true; const id = typeSel.value; typeSel.value = it.typeId; setType(id); it.typeId = id; };
     const sugg = () => {
@@ -613,6 +675,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       });
     };
     nameIn.oninput = sugg;
+    wireLocSelect($('#fLoc', sh));
     $('#edFile', sh).onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
       try {
@@ -623,7 +686,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       } catch (err) { toast(err.message); }
     };
     $('[data-a=nophoto]', sh).onclick = e => { photo = null; $('#edPhoto', sh).innerHTML = photoThumb(null); e.target.hidden = true; };
-    $$('[data-tag]', sh).forEach(b => b.onclick = () => addTo($('#fTags', sh), b.dataset.tag));
+    const getTags = tagField($('#fTags', sh), it.tags || []);
     $('[data-a=save]', sh).onclick = async () => {
       const name = nameIn.value.trim(); if (!name) { nameIn.focus(); return toast('Give it a name'); }
       const lw = num($('#fLimW', sh).value), lm = num($('#fLimM', sh).value);
@@ -631,7 +694,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
         name, typeId: typeSel.value, brand: $('#fBrand', sh).value.trim(), store: $('#fStore', sh).value.trim(), size: sizeIn.value.trim(),
         colors: splitTags(colIn.value), location: $('#fLoc', sh).value,
         purchaseDate: $('#fDate', sh).value, price: $('#fPrice', sh).value, discountPrice: $('#fDisc', sh).value,
-        tags: splitTags($('#fTags', sh).value), estWears: $('#fEst', sh).value, notes: $('#fNotes', sh).value.trim(),
+        tags: getTags(), estWears: $('#fEst', sh).value, notes: $('#fNotes', sh).value.trim(),
         limit: lw ? { wears: lw, restMonths: lm || 0 } : null, retired: $('#fRet', sh).checked, photo
       });
       if (isNew) S.items.push(it); else S.items[S.items.findIndex(x => x.id === it.id)] = it;
@@ -691,13 +754,12 @@ function editFilter(f) {
     <p class="help">A quick filter shows items matching any of the chosen types and, if you add tags, any of those tags. Types already have their own chips.</p>
     <label class="field"><span>Name</span><input id="flName" value="${esc(x.name)}" placeholder="e.g. Concert tees"></label>
     <h2>Types</h2><div class="chips" style="flex-wrap:wrap">${S.types.map(t => `<button class="chip ${x.typeIds.includes(t.id) ? 'on' : ''}" data-t="${t.id}" type="button">${esc(t.name)}</button>`).join('')}</div>
-    <label class="field"><span>Tags (comma separated, optional)</span><input id="flTags" value="${esc(x.tags.join(', '))}"></label>
-    <div class="tagsugg" style="margin-top:6px">${allTags().map(t => `<button class="tag" data-tag="${esc(t)}" type="button">${esc(t)}</button>`).join('')}</div>
+    <div class="field" style="margin-top:12px"><span>Tags (optional)</span><div id="flTags"></div></div>
     <div class="row end">${isNew ? '' : '<button class="danger" data-a="del" type="button">Delete</button>'}<button class="primary" data-a="save" type="button">Save</button></div>`, sh => {
     $$('[data-t]', sh).forEach(b => b.onclick = () => { const i = x.typeIds.indexOf(b.dataset.t); i < 0 ? x.typeIds.push(b.dataset.t) : x.typeIds.splice(i, 1); b.classList.toggle('on'); });
-    $$('[data-tag]', sh).forEach(b => b.onclick = () => { const f = $('#flTags', sh); const t = splitTags(f.value); if (!t.includes(b.dataset.tag)) t.push(b.dataset.tag); f.value = t.join(', '); });
+    const getTags = tagField($('#flTags', sh), x.tags);
     $('[data-a=save]', sh).onclick = async () => {
-      x.name = $('#flName', sh).value.trim(); x.tags = splitTags($('#flTags', sh).value);
+      x.name = $('#flName', sh).value.trim(); x.tags = getTags();
       if (!x.name) return toast('Name the filter');
       if (!x.typeIds.length && !x.tags.length) return toast('Pick a type or add a tag');
       if (isNew) S.filters.push(x); else S.filters[S.filters.findIndex(y => y.id === x.id)] = x;
@@ -767,6 +829,12 @@ function renderSettings() {
     <h2>Locations</h2>
     <section class="card">${S.locations.map(l => `<div class="row" data-loc="${l.id}" style="padding:4px 0"><input class="grow" value="${esc(l.name)}" style="flex:1"><span class="muted small" style="min-width:60px;text-align:right">${S.items.filter(i => i.location === l.id).length} items</span><button class="icon" data-delloc="${l.id}" type="button" aria-label="Delete location">✕</button></div>`).join('')}
       <div class="row end"><button class="ghost" data-a="addloc" type="button">＋ Add location</button></div></section>
+
+    <h2>Tags</h2>
+    <section class="card stack"><p class="help" style="margin:0">Tags you’ve used on items are always suggested. Add more here (for example from an old app) so they’re suggested before you’ve used them. Separate them with commas.</p>
+      <div class="row"><input id="libIn" class="grow" placeholder="knicks, concert, nintendo" autocapitalize="off" style="flex:1"><button class="ghost" data-a="addlib" type="button">Add</button></div>
+      ${(st.tagLibrary || []).length ? `<div><span class="muted small">${st.tagLibrary.length} saved · tap one to remove it </span>${st.tagLibrary.map(t => `<button class="tag" data-libdel="${esc(t)}" type="button" style="cursor:pointer;background:none">${esc(t)} ✕</button>`).join('')}</div>` : ''}
+    </section>
 
     <h2>Outfit templates</h2>
     ${S.templates.map(tp => `<section class="card" data-tpl="${tp.id}" style="margin-bottom:10px">
@@ -841,6 +909,11 @@ function renderSettings() {
   $('[data-a=addloc]', v).onclick = async () => { S.locations.push({ id: uid(), name: 'New place' }); await save('locations'); renderSettings(); $$('[data-loc] input').pop().select(); };
   $('#purchIn', v).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const n = await importPurchasesCSV(await f.text()); toast(`${n} purchases loaded for auto-fill`); renderSettings(); } catch (err) { toast(err.message); } };
   const cp = $('[data-a=clearpurch]', v); if (cp) twoStep(cp, 'Tap to confirm', async () => { S.purchases = []; await save('purchases'); renderSettings(); });
+  $('[data-a=addlib]', v).onclick = async () => {
+    const add = splitTags($('#libIn', v).value).filter(t => !S.settings.tagLibrary.includes(t)); if (!add.length) return;
+    S.settings.tagLibrary = [...S.settings.tagLibrary, ...add].sort(); await save(); toast(`${add.length} tag${add.length > 1 ? 's' : ''} added`); renderSettings();
+  };
+  $$('[data-libdel]', v).forEach(b => b.onclick = async () => { S.settings.tagLibrary = S.settings.tagLibrary.filter(t => t !== b.dataset.libdel); await save(); renderSettings(); });
   $('[data-a=addtype]', v).onclick = async () => { S.types.push({ id: uid(), name: 'New type', limit: null, defaultSize: '' }); await save('types'); renderSettings(); $$('[data-type] [data-f=name]').pop().select(); };
   // templates
   $$('[data-tpl]', v).forEach(card => {
@@ -934,7 +1007,7 @@ async function importItemsCSV(text) {
     const typeId = typeFor(r.type || r.category);
     let it = (r.id && itemById(r.id)) || S.items.find(i => i.name.toLowerCase() === name.toLowerCase() && i.typeId === typeId);
     const isNew = !it;
-    if (isNew) { it = { id: uid(), name, typeId, size: typeById(typeId)?.defaultSize || '', colors: [], location: '', tryOns: [], brand: '', store: '', tags: [], price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
+    if (isNew) { it = { id: uid(), name, typeId, size: sizeFor(typeId), colors: [], location: '', tryOns: [], brand: '', store: '', tags: [], price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
     const has = k => k in r && r[k] !== '';
     it.name = name; it.typeId = typeId;
     if (has('brand')) it.brand = r.brand;
