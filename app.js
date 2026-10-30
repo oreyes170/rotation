@@ -1004,7 +1004,7 @@ function renderSettings() {
   // drive
   $('#sClient', v).onchange = async e => { S.settings.clientId = e.target.value.trim(); await save(); };
   $('#sAuto', v).onchange = async e => { S.settings.autoBackup = e.target.checked; await save(); };
-  $('[data-a=drvconnect]', v).onclick = async () => { try { await Drive.signIn(); toast('Connected to Google Drive'); renderSettings(); renderSync(); } catch (e) { toast(e.message); } };
+  $('[data-a=drvconnect]', v).onclick = async () => { try { await Drive.signIn(); toast('Connected to Google Drive'); renderSettings(); renderSync(); scheduleBackup(); } catch (e) { toast(e.message); } };
   $('[data-a=drvbackup]', v).onclick = () => backupNow(true);
   $('[data-a=drvrestore]', v).onclick = restoreFromDrive;
   // file backup
@@ -1250,7 +1250,8 @@ function driveStatusText() {
 }
 let backupTimer = null, backingUp = false;
 function scheduleBackup() {
-  if (!S.settings.autoBackup || !Drive.ok()) return;
+  // also runs right after connecting, so changes made while disconnected get backed up
+  if (!S.settings.autoBackup || !Drive.ok() || S.settings.lastBackup >= S.settings.lastChange) return;
   clearTimeout(backupTimer); backupTimer = setTimeout(() => backupNow(false), 4000);
 }
 async function backupNow(interactive) {
@@ -1296,7 +1297,7 @@ function renderSync(label) {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal').hidden) closeModal(); });
   renderSync(); go(S.items.length ? 'log' : 'closet');
   const after = Drive.fromRedirect();
-  if (after) { go('settings'); renderSync(); if (after === 'backup') backupNow(true); else if (after === 'restore') restoreFromDrive(); else toast('Connected to Google Drive'); }
+  if (after) { go('settings'); renderSync(); if (after === 'backup') backupNow(true); else if (after === 'restore') restoreFromDrive(); else { toast('Connected to Google Drive'); scheduleBackup(); } }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 })();
