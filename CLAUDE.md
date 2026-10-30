@@ -50,6 +50,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
   - Type is guessed from words in the name.
   - Colours are found by sampling the photo, with the edge colour treated as background.
   - Typing a name suggests matches from imported purchases.
+  - Brand, store, size and made in suggest values as you type (`suggestField`: tappable chips under the box, close spellings included, most used when empty). Colours, tags and materials are chip fields (`tagField`).
   - There's no online AI. That's deliberate, to keep the app offline.
 
 ## Google Drive backup

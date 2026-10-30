@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 18; // shown in the header; bump with CACHE in sw.js
+const VERSION = 19; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -309,7 +309,27 @@ function tagField(box, initial, { field = 'tags', extra = S.settings.tagLibrary 
     else if (e.key === 'Backspace' && !inp.value && tags.length) { tags.pop(); draw(); }
   };
   draw();
-  return () => { push(inp.value); inp.value = ''; return [...tags]; };
+  const get = () => { push(inp.value); inp.value = ''; return [...tags]; };
+  get.add = t => { push(t); draw(); }; get.count = () => tags.length;
+  return get;
+}
+/* single-value field (brand, store, size, made in): tappable suggestions under it as you type,
+   close spellings included; with the box empty, the most used values */
+function suggestField(inp, values, used = []) {
+  const box = document.createElement('div'); box.className = 'tagsugg sugg1'; inp.after(box);
+  const n = {}; used.filter(Boolean).forEach(v => { n[v] = (n[v] || 0) + 1; });
+  const all = [...new Set([...Object.keys(n), ...values.filter(Boolean)])];
+  const draw = () => {
+    const q = inp.value.trim().toLowerCase();
+    let list = q ? all.filter(v => v.toLowerCase().includes(q) && v.toLowerCase() !== q).sort((a, b) => b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q) || (n[b] || 0) - (n[a] || 0) || a.localeCompare(b))
+      : Object.keys(n).sort((a, b) => n[b] - n[a] || a.localeCompare(b));
+    if (q.length >= 3 && list.length < 3) list = [...list, ...all.filter(v => !list.includes(v) && v.toLowerCase() !== q && editDist(q, v.toLowerCase()) <= (q.length > 5 ? 2 : 1))];
+    box.innerHTML = list.slice(0, 6).map(v => `<button class="tag" data-v="${esc(v)}" type="button">${esc(v)}</button>`).join('');
+  };
+  box.onpointerdown = e => e.preventDefault();   // keep the keyboard up while tapping a suggestion
+  box.onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; e.preventDefault(); inp.value = b.dataset.v; box.innerHTML = ''; inp.dispatchEvent(new Event('change')); };
+  inp.addEventListener('input', draw); inp.addEventListener('focus', draw);
+  inp.addEventListener('blur', () => setTimeout(() => { box.innerHTML = ''; }, 150));
 }
 function distinct(field) { return [...new Set(S.items.map(i => (i[field] || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
 function allColours() { const s = new Set(PALETTE.map(p => p[0])); S.items.forEach(i => (i.colors || []).forEach(c => s.add(c))); return [...s].sort(); }
@@ -672,7 +692,6 @@ function openEditor(item, { typeId = null, onSave } = {}) {
   const startType = typeId || S.types[0]?.id;
   const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brand: '', store: '', size: sizeFor(startType), colors: [], location: S.settings.logLocation || '', tags: [], materials: [], madeIn: '', link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
   let photo = it.photo, typeTouched = !isNew || !!typeId;
-  const dl = (id, vals) => `<datalist id="${id}">${vals.map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
   openModal(`${head(isNew ? 'New item' : 'Edit item')}
     <div class="photo-in"><div id="edPhoto">${photoThumb(photo)}</div><div class="stack" style="gap:6px">
       <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;text-align:center;background:var(--surface)">${photo ? 'Change photo' : 'Add photo'}<input type="file" accept="image/*" id="edFile" hidden></label>
@@ -681,13 +700,13 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="field full"><span>Name</span><input id="fName" value="${esc(it.name)}" placeholder="e.g. Navy dot oxford" autocomplete="off"></label>
       <div class="full" id="edSugg"></div>
       <label class="field"><span>Type</span><select id="fType">${S.types.map(t => `<option value="${t.id}" ${t.id === it.typeId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
-      <label class="field"><span>Size</span><input id="fSize" list="dlSize" value="${esc(it.size)}" placeholder="${esc(sizeFor(it.typeId) || 'e.g. XL')}"></label>
-      <label class="field"><span>Brand</span><input id="fBrand" list="dlBrand" value="${esc(it.brand)}"></label>
-      <label class="field"><span>Store purchased</span><input id="fStore" list="dlStore" value="${esc(it.store)}"></label>
-      <label class="field full"><span>Colours (comma separated)</span><input id="fColors" value="${esc((it.colors || []).join(', '))}" placeholder="navy, white"></label>
+      <label class="field"><span>Size</span><input id="fSize" autocomplete="off" value="${esc(it.size)}" placeholder="${esc(sizeFor(it.typeId) || 'e.g. XL')}"></label>
+      <label class="field"><span>Brand</span><input id="fBrand" autocomplete="off" value="${esc(it.brand)}"></label>
+      <label class="field"><span>Store purchased</span><input id="fStore" autocomplete="off" value="${esc(it.store)}"></label>
+      <div class="field full"><span>Colours</span><div id="fColors"></div></div>
       <div class="full tagsugg" id="colSugg"></div>
       <div class="field full"><span>Materials</span><div id="fMats"></div></div>
-      <label class="field full"><span>Made in</span><input id="fMade" list="dlMade" value="${esc(it.madeIn || '')}" placeholder="e.g. Bangladesh" autocomplete="off"></label>
+      <label class="field full"><span>Made in</span><input id="fMade" value="${esc(it.madeIn || '')}" placeholder="e.g. Bangladesh" autocomplete="off"></label>
       <label class="field"><span>Kept at</span><select id="fLoc">${locOptions(it.location)}</select></label>
       <label class="field"><span>Purchase date</span><input type="date" id="fDate" value="${esc(it.purchaseDate)}"></label>
       <label class="field"><span>Purchase price ($)</span><input type="number" step="0.01" min="0" id="fPrice" value="${esc(it.price)}"></label>
@@ -701,15 +720,19 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="check full"><input type="checkbox" id="fRet" ${it.retired ? 'checked' : ''}> Retired: gone for good (given away, worn out). Not the same as resting after a wear limit.</label>
     </div>
     <p class="help">Estimated wears count toward total wears${S.settings.cpwIncludesEstimate ? ' and cost per wear' : ''}. They never change your tracked history, recent-day counts or wear limits.</p>
-    ${dl('dlBrand', distinct('brand'))}${dl('dlMade', [...new Set([...distinct('madeIn'), ...COUNTRIES])].sort((a, b) => a.localeCompare(b)))}${dl('dlStore', [...new Set([...distinct('store'), ...S.purchases.map(p => p.retailer)])].filter(Boolean).sort())}${dl('dlSize', [...new Set([...distinct('size'), ...S.types.map(t => t.defaultSize).filter(Boolean)])].sort())}
     <div class="row end">${isNew ? '' : '<button class="danger" data-a="del" type="button">Delete</button>'}<button class="ghost" data-x type="button">Cancel</button><button class="primary" data-a="save" type="button">Save</button></div>`, sh => {
     $$('[data-x]', sh).forEach(b => b.onclick = closeModal);
-    const typeSel = $('#fType', sh), sizeIn = $('#fSize', sh), nameIn = $('#fName', sh), colIn = $('#fColors', sh);
-    const addTo = (inp, val) => { const t = splitTags(inp.value); if (!t.includes(val)) t.push(val); inp.value = t.join(', '); };
+    const typeSel = $('#fType', sh), sizeIn = $('#fSize', sh), nameIn = $('#fName', sh);
+    const cols = tagField($('#fColors', sh), it.colors || [], { field: 'colors', extra: allColours(), noun: 'colour' });
+    const field = f => S.items.map(i => (i[f] || '').trim());
+    suggestField($('#fBrand', sh), [], field('brand'));
+    suggestField($('#fStore', sh), S.purchases.map(p => p.retailer.replace(/\s*\((in-store|online)\)\s*$/i, '')), field('store'));
+    suggestField(sizeIn, S.types.map(t => t.defaultSize), field('size'));
+    suggestField($('#fMade', sh), COUNTRIES, field('madeIn'));
     const showColours = (found, note) => {
       const box = $('#colSugg', sh);
       box.innerHTML = (note ? `<span class="muted small">${esc(note)} </span>` : '') + found.map(c => `<button class="tag" data-col="${esc(c)}" type="button">+ ${esc(c)}</button>`).join('');
-      $$('[data-col]', box).forEach(b => b.onclick = () => addTo(colIn, b.dataset.col));
+      $$('[data-col]', box).forEach(b => b.onclick = () => cols.add(b.dataset.col));
     };
     const setType = id => {
       const oldDef = sizeFor(typeSel.value);
@@ -730,7 +753,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
         if (p.price != null) $('#fPrice', sh).value = p.price;
         if (p.date) $('#fDate', sh).value = p.date;
         if (p.size) sizeIn.value = cleanSize(p.size);
-        if (p.color) splitTags(p.color.replace(/\//g, ',')).forEach(c => addTo(colIn, c));
+        if (p.color) splitTags(p.color.replace(/\//g, ',')).forEach(c => cols.add(c));
         if (!typeTouched) { const g = guessType(p.item); if (g) { setType(g); it.typeId = g; } }
         box.innerHTML = `<p class="muted small">Filled in from your ${esc(p.retailer)} purchase on ${prettyDate(p.date)}. Check it and add anything missing.</p>`;
       });
@@ -742,7 +765,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       try {
         photo = await readImage(f); $('#edPhoto', sh).innerHTML = photoThumb(photo); $('[data-a=nophoto]', sh).hidden = false;
         const found = await detectColours(photo);
-        if (found.length && !colIn.value.trim()) colIn.value = found.join(', ');
+        if (found.length && !cols.count()) found.forEach(c => cols.add(c));
         showColours(found, found.length ? 'Colours spotted in the photo:' : '');
       } catch (err) { toast(err.message); }
     };
@@ -755,7 +778,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       Object.assign(it, {
         name, typeId: typeSel.value, brand: $('#fBrand', sh).value.trim(), store: $('#fStore', sh).value.trim(), size: cleanSize(sizeIn.value),
         materials: getMats(), madeIn: $('#fMade', sh).value.trim(), link: $('#fLink', sh).value.trim(),
-        colors: splitTags(colIn.value), location: $('#fLoc', sh).value,
+        colors: cols(), location: $('#fLoc', sh).value,
         purchaseDate: $('#fDate', sh).value, price: $('#fPrice', sh).value, discountPrice: $('#fDisc', sh).value,
         tags: getTags(), estWears: $('#fEst', sh).value, notes: $('#fNotes', sh).value.trim(),
         limit: lw ? { wears: lw, restMonths: lm || 0 } : null, retired: $('#fRet', sh).checked, photo

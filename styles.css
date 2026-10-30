@@ -74,6 +74,8 @@ textarea{min-height:64px;resize:vertical}
 .tagsugg .tag{cursor:pointer;background:none}
 .tag.new{border-style:dashed}
 .tagsugg{margin-top:6px;line-height:2}
+.sugg1:empty{display:none}
+.sugg1{margin-top:4px}
 .tagbox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 8px;min-height:42px}
 .tagbox:focus-within{border-color:var(--accent)}
 .tagchips{display:contents}

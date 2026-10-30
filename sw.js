@@ -1,5 +1,5 @@
 /* Offline support: serve the app from cache, refresh the cache in the background. */
-const CACHE = 'rotation-v18'; // keep in step with VERSION in app.js
+const CACHE = 'rotation-v19'; // keep in step with VERSION in app.js
 const SHELL = ['./', './index.html', './app.js', './styles.css', './manifest.webmanifest', './favicon-32.png', './apple-touch-icon.png', './icon-192.png', './icon-512.png'];
 // cache: 'reload' skips the browser's HTTP cache, so a new version never installs old files
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' }))))); self.skipWaiting(); });
