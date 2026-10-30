@@ -129,6 +129,9 @@ textarea{min-height:64px;resize:vertical}
 .cal-cell .more{position:absolute;bottom:3px;right:3px;font-size:10px;background:var(--accent);color:var(--accent-fg);border-radius:5px;padding:0 4px;z-index:1}
 .cal-cell .txt{position:absolute;inset:18px 3px 3px;font-size:10px;line-height:1.2;overflow:hidden;color:var(--fg)}
 .cal-cell.has{background:var(--surface2)}
+.cal-cell.plan{border:1.5px dashed var(--accent);background:var(--surface)}
+.cal-cell.plan img{opacity:.55}
+.entry.plan{border-style:dashed}
 .calsum{margin-top:14px}
 .calsum li{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)}
 .calsum ul{list-style:none;margin:0;padding:0}
@@ -153,7 +156,9 @@ textarea{min-height:64px;resize:vertical}
 .photo-in{display:grid;grid-template-columns:96px 1fr;gap:12px;align-items:center}
 .photo-in .thumb{border-radius:10px}
 
-.set-row{display:grid;grid-template-columns:minmax(0,1fr) 64px 56px 56px 38px;gap:6px;align-items:end;padding:8px 0;border-bottom:1px solid var(--line)}
+.set-row{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.4fr) minmax(0,.8fr) minmax(0,.8fr) 38px;gap:6px;align-items:end;padding:8px 0;border-bottom:1px solid var(--line)}
+.set-row > .field:first-child{grid-column:1/5}
+.set-row > button{grid-area:1/5}
 .tpl-slots{display:flex;flex-direction:column;gap:6px;margin:8px 0}
 .tpl-slots .row select{flex:1}
 .help{font-size:13px;color:var(--muted);line-height:1.5}

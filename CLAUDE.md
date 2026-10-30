@@ -18,10 +18,10 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 ## Data model (`app.js`)
 - **Storage:** IndexedDB database `rotation`, store `kv`. Each collection is saved under its own key, and `save(...keys)` writes those keys plus `settings`.
 - **Collections:**
-  - **`types`:** `{id, name, limit:{wears, restMonths}|null, defaultSize}`
-  - **`items`:** `{id, name, typeId, brand, store, size, colors[], location, tags[], price, discountPrice, purchaseDate, estWears, limit, notes, retired, photo (JPEG data URL, ~720px), tryOns:[{id,date,r,note}], created}`
-  - **`entries`** (one logged outfit): `{id, date (YYYY-MM-DD), templateId, slots:[{typeId,itemId}], itemIds[], fits:{itemId:{r,note}}, created, imported?}`
-  - **`templates`:** `{id, name, slots:[typeId]}`. The default "Daily" template is T-shirt, Work shirt, Cap, Tie.
+  - **`types`:** `{id, name, limit:{wears, restMonths}|null, defaultSize, group}`. Defaults: Short-sleeve tee, Long-sleeve tee and Jersey (group "Tees"), then Work shirt, Cap, Tie, Shoes, Pants, Jacket, Other.
+  - **`items`:** `{id, name, typeId, brand, store, size, colors[], materials[], location, tags[], link, price, discountPrice, purchaseDate, estWears, limit, notes, retired, photo (JPEG data URL, ~720px), tryOns:[{id,date,r,note}], created}`
+  - **`entries`** (one logged outfit): `{id, date (YYYY-MM-DD), templateId, slots:[{typeId,itemId}], itemIds[], fits:{itemId:{r,note}}, created, imported?, planned?}`
+  - **`templates`:** `{id, name, slots:[typeId]}`. The default "Daily" template is Short-sleeve tee, Work shirt, Cap, Tie.
   - **`days`:** `{date: {cover:{kind:'item',itemId}|{kind:'photo',data}}}`
   - **`filters`:** `{id, name, typeIds[], tags[]}`. These are quick filters; every type also gets its own chip.
   - **`locations`:** `{id, name}`, defaulting to Home. The owner adds their own places on the device.
@@ -30,13 +30,17 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Backup and import:** `snapshot()` / `applySnapshot()` handle JSON backups. A restore replaces everything except the Drive settings.
 
 ## Rules the owner asked for (don't change without asking)
-- **Wears are derived from `entries`.** The same item is counted once per date.
+- **Wears are derived from `entries`.** The same item is counted once per date. Use `worn()`, not `S.entries`, for anything that counts wears.
+- **Planned outfits** are entries with `planned: true`, made by logging on a future date. They never count as wears, fits, pairings or exports until marked "Wore it" (which drops the flag). The Log screen flags past plans that weren't confirmed. For a future date, `statusOn()` counts earlier plans so a plan can't break a wear limit.
+- **Type groups:** types with the same `group` share one calendar view and fill the same outfit slot, but stay separate types for data. Ungrouped types stand alone.
 - **Estimated past wears (`estWears`)** add to total wears, and to cost per wear when the setting is on. They must never affect tracked history, the "worn in past X days" count, wear limits or the calendar.
 - **Cost per wear** uses the discount price if there is one, otherwise the purchase price.
 - **Wear limit:** after N tracked wears the item rests for M months (calendar months from the last counted wear), then a new cycle starts. `rotation()` recalculates this from the log every time, so editing history stays consistent. Wears logged during a rest still count toward totals but not toward the cycle. A per-item limit overrides the type's limit.
 - **Fit** has 5 levels: too-tight, snug, good, loose, too-loose, scored -2 to 2. Each item records a fit per wear (`entry.fits`) and per try-on (`item.tryOns`). Try-ons do not count as wears. The trend (recent vs earlier fits) matters.
 - **Location:** where an item is kept. The "Dressing at" choice on the Log screen filters the item picker to that place. Every "Kept at" menu has "＋ New place…" to add one on the spot.
-- **Size:** a new item gets its type's default size (T-shirt defaults to XL), or else the size used most for that type.
+- **Size:** a new item gets its type's default size (tees default to XL), or else the size used most for that type. A "Men's"/"Women's" prefix is dropped (`cleanSize`).
+- **Materials** are entered as chips like tags, with common materials suggested.
+- **Photo import** (Setup → Photos) matches image files by item name or by the ID at the end of the item's `link`, or reads a photo pack `{app:'rotation-photos', photos:[{link?, name?, data}]}`. Existing photos are kept unless "Replace" is ticked.
 - **Tags** are entered as chips. Known tags (on items, plus `tagLibrary`) are suggested as you type, including close spellings, and an unknown tag is marked "new" so typos stand out.
 - **Retired** means gone for good and is set by hand. **Resting** is temporary and comes from the wear limit.
 - **The item picker** hides resting and retired items by default and sorts by least recently worn.
@@ -58,7 +62,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Keep the owner's data files out of this public repo.** That includes exports from other wardrobe apps and purchase history.
 
 ## Open ideas, not built
-1. **Photo import from a previous wardrobe app:** the item image URLs are on Google Cloud Storage. Parked for now.
+1. **Photo import from a previous wardrobe app:** the image URLs are on Google Cloud Storage. Plan: collect the URLs from the old app's web page, build a photo pack outside the repo, and import it in Setup → Photos.
 2. **Photos as separate files in a Drive folder** ("Rotation photos"), so the backup JSON stays small. Right now photos sit inside the backup, which gets big (about 200 photos ≈ 15–20 MB).
 3. **Merging when both phone and computer have changes.** Today a restore replaces everything on the device, with no merge.
 4. **A real iPhone app.** The owner is keeping the web app while testing and tweaking. When the owner is ready, the plan is:

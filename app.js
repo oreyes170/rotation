@@ -54,14 +54,15 @@ const COLLS = ['types', 'items', 'entries', 'templates', 'days', 'filters', 'loc
 let S = {};
 
 function defaults() {
-  const mk = name => ({ id: uid(), name, limit: null, defaultSize: name === 'T-shirt' ? 'XL' : '' });
-  const types = ['T-shirt', 'Work shirt', 'Cap', 'Tie', 'Shoes', 'Pants', 'Jacket', 'Other'].map(mk);
+  const tee = n => /tee|jersey/i.test(n);
+  const mk = name => ({ id: uid(), name, limit: null, defaultSize: tee(name) ? 'XL' : '', group: tee(name) ? 'Tees' : '' });
+  const types = ['Short-sleeve tee', 'Long-sleeve tee', 'Jersey', 'Work shirt', 'Cap', 'Tie', 'Shoes', 'Pants', 'Jacket', 'Other'].map(mk);
   const id = n => types.find(t => t.name === n).id;
   return {
     types, items: [], entries: [], days: {}, filters: [], purchases: [],
     locations: [{ id: uid(), name: 'Home' }],
-    templates: [{ id: uid(), name: 'Daily', slots: [id('T-shirt'), id('Work shirt'), id('Cap'), id('Tie')] }],
-    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], schema: 2 }
+    templates: [{ id: uid(), name: 'Daily', slots: [id('Short-sleeve tee'), id('Work shirt'), id('Cap'), id('Tie')] }],
+    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], schema: 3 }
   };
 }
 
@@ -76,6 +77,20 @@ async function load() {
     const tee = S.types.find(t => t.name.toLowerCase() === 't-shirt'); if (tee && !tee.defaultSize) tee.defaultSize = 'XL';
     S.settings.schema = 2; await DB.setMany({ types: S.types, settings: S.settings });
   }
+  if (S.settings.schema < 3) {
+    // v3: T-shirt becomes Short-sleeve tee, plus Long-sleeve tee and Jersey, grouped as "Tees" on the calendar.
+    // Sizes drop a "Men's"/"Women's" prefix.
+    const named = n => S.types.find(t => t.name.toLowerCase() === n);
+    const tee = named('t-shirt') || named('short-sleeve tee');
+    if (tee) { if (tee.name.toLowerCase() === 't-shirt') tee.name = 'Short-sleeve tee'; tee.group ||= 'Tees'; }
+    for (const n of ['Long-sleeve tee', 'Jersey']) {
+      const t = named(n.toLowerCase());
+      if (t) t.group ||= 'Tees';
+      else S.types.splice(tee ? S.types.indexOf(tee) + 1 + (n === 'Jersey') : S.types.length, 0, { id: uid(), name: n, limit: tee?.limit ? { ...tee.limit } : null, defaultSize: tee?.defaultSize || 'XL', group: 'Tees' });
+    }
+    S.items.forEach(i => { if (i.size) i.size = cleanSize(i.size); });
+    S.settings.schema = 3; await DB.setMany({ types: S.types, items: S.items, settings: S.settings });
+  }
 }
 
 async function save(...keys) {
@@ -89,10 +104,17 @@ async function save(...keys) {
 const itemById = id => S.items.find(i => i.id === id);
 const typeById = id => S.types.find(t => t.id === id);
 const typeName = id => typeById(id)?.name || 'Item';
+/* types can share a calendar group (e.g. three kinds of tee shown as "Tees"); ungrouped types stand alone */
+const groupKey = id => { const g = typeById(id)?.group?.trim(); return g ? 'g:' + g.toLowerCase() : 't:' + id; };
+const groupName = key => key.startsWith('g:') ? S.types.find(t => groupKey(t.id) === key)?.group.trim() || key.slice(2) : typeName(key.slice(2));
+const groupKeys = () => [...new Set(S.types.map(t => groupKey(t.id)))];
+const cleanSize = s => String(s || '').replace(/^\s*(wo)?men[’']?s\b\s*/i, '').trim();
 
+/* planned outfits ({planned: true}) never count as wears until they're marked worn */
+const worn = () => S.entries.filter(e => !e.planned);
 function wearDates(itemId) {
   const set = new Set();
-  for (const e of S.entries) if (e.itemIds.includes(itemId)) set.add(e.date);
+  for (const e of worn()) if (e.itemIds.includes(itemId)) set.add(e.date);
   return [...set].sort();
 }
 function effPrice(i) { const d = num(i.discountPrice), p = num(i.price); return d != null ? d : p; }
@@ -102,7 +124,7 @@ function limitOf(i) {
 }
 /* Wear limit: after N tracked wears the item rests for M months, then a new cycle starts.
    Derived from the wear log, so editing history keeps it correct. */
-function rotation(dates, lim) {
+function rotation(dates, lim, asOf = today()) {
   if (!lim) return { resting: false, cycleWears: dates.length, restUntil: null };
   const N = num(lim.wears), M = num(lim.restMonths) || 0;
   let count = 0, restUntil = null;
@@ -112,7 +134,7 @@ function rotation(dates, lim) {
     count++;
     if (count >= N) restUntil = addMonths(d, M);
   }
-  const t = today();
+  const t = asOf;
   if (restUntil && t < restUntil) return { resting: true, cycleWears: count, restUntil };
   if (restUntil) return { resting: false, cycleWears: 0, restUntil: null };
   return { resting: false, cycleWears: count, restUntil: null };
@@ -136,7 +158,7 @@ function stats(item) {
 }
 function combos(itemId, from, to) {
   const m = new Map();
-  for (const e of S.entries) {
+  for (const e of worn()) {
     if (!e.itemIds.includes(itemId)) continue;
     if (from && e.date < from) continue; if (to && e.date > to) continue;
     for (const o of e.itemIds) if (o !== itemId) { if (!m.has(o)) m.set(o, new Set()); m.get(o).add(e.date); }
@@ -145,8 +167,16 @@ function combos(itemId, from, to) {
     .filter(x => x.item).sort((a, b) => b.n - a.n || (b.last > a.last ? 1 : -1));
 }
 function pairCount(a, b) {
-  const s = new Set(); for (const e of S.entries) if (e.itemIds.includes(a) && e.itemIds.includes(b)) s.add(e.date); return s.size;
+  const s = new Set(); for (const e of worn()) if (e.itemIds.includes(a) && e.itemIds.includes(b)) s.add(e.date); return s.size;
 }
+/* availability on a given day. For a future day, earlier plans count too, so a plan can't break a wear limit. */
+function statusOn(item, date) {
+  if (item.retired) return 'retired';
+  if (date <= today()) return rotation(wearDates(item.id), limitOf(item), date).resting ? 'resting' : 'active';
+  const dates = [...new Set(S.entries.filter(e => e.itemIds.includes(item.id) && (!e.planned || e.date < date)).map(e => e.date))].sort();
+  return rotation(dates, limitOf(item), date).resting ? 'resting' : 'active';
+}
+const nextPlan = itemId => S.entries.filter(e => e.planned && e.date >= today() && e.itemIds.includes(itemId)).map(e => e.date).sort()[0];
 const FITS = [['too-tight', 'Too tight', -2], ['snug', 'Snug', -1], ['good', 'Just right', 0], ['loose', 'Loose', 1], ['too-loose', 'Too loose', 2]];
 const fitLabel = r => FITS.find(f => f[0] === r)?.[1] || '';
 const fitScore = r => FITS.find(f => f[0] === r)?.[2];
@@ -169,7 +199,7 @@ function wireLocSelect(sel, onPick) {
 /* every fit note for an item: from logged wears and from try-ons (try-ons do not count as wears) */
 function fitHistory(itemId) {
   const out = [];
-  for (const e of S.entries) { const f = e.fits?.[itemId]; if (f?.r && e.itemIds.includes(itemId)) out.push({ date: e.date, r: f.r, note: f.note || '', kind: 'wear', entryId: e.id }); }
+  for (const e of worn()) { const f = e.fits?.[itemId]; if (f?.r && e.itemIds.includes(itemId)) out.push({ date: e.date, r: f.r, note: f.note || '', kind: 'wear', entryId: e.id }); }
   for (const t of (itemById(itemId)?.tryOns || [])) out.push({ date: t.date, r: t.r, note: t.note || '', kind: 'try-on', id: t.id });
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -183,13 +213,13 @@ function fitSummary(itemId) {
   return { last, trend, count: h.length };
 }
 const TYPE_WORDS = [
-  [/\b(neck)?ties?\b|bow ?tie/i, 'tie'], [/\b(caps?|hats?|snapback|beanie|fitted|dad hat|trucker)\b/i, 'cap'],
-  [/\b(tees?|t-?shirts?|ringer|graphic)\b/i, 't-shirt'], [/\b(oxford|button[- ]?(down|up)|dress shirt|flannel|polo|work shirt|shirt)\b/i, 'work shirt'],
+  [/\b(neck)?ties?\b|bow ?tie/i, 'tie'], [/\b(caps?|hats?|snapback|beanie|fitted|dad hat|trucker)\b/i, 'cap'], [/\bjerseys?\b/i, 'jersey'],
+  [/\blong[- ]?sleeve/i, 'long-sleeve tee'], [/\b(tees?|t-?shirts?|ringer|graphic)\b/i, 'short-sleeve tee|t-shirt'], [/\b(oxford|button[- ]?(down|up)|dress shirt|flannel|polo|work shirt|shirt)\b/i, 'work shirt'],
   [/\b(shoes?|sneakers?|boots?|loafers?|slippers?|sandals?|trainers?|clogs?)\b/i, 'shoes'], [/\b(pants?|jeans?|chinos?|trousers?|shorts|joggers?|slacks)\b/i, 'pants'],
-  [/\b(jackets?|coats?|hoodies?|sweaters?|cardigans?|fleece|blazers?|parka|sweatshirt|crewneck)\b/i, 'jacket'], [/\bjerseys?\b/i, 'jersey']
+  [/\b(jackets?|coats?|hoodies?|sweaters?|cardigans?|fleece|blazers?|parka|sweatshirt|crewneck)\b/i, 'jacket']
 ];
 function guessType(text) {
-  for (const [re, word] of TYPE_WORDS) if (re.test(text)) { const t = S.types.find(x => x.name.toLowerCase() === word || x.name.toLowerCase().replace(/s$/, '') === word); if (t) return t.id; }
+  for (const [re, words] of TYPE_WORDS) if (re.test(text)) for (const word of words.split('|')) { const t = S.types.find(x => x.name.toLowerCase() === word || x.name.toLowerCase().replace(/s$/, '') === word); if (t) return t.id; }
   return null;
 }
 const PALETTE = [['black', 20, 20, 22], ['white', 245, 245, 242], ['grey', 140, 140, 140], ['light grey', 200, 200, 200], ['navy', 28, 38, 80], ['blue', 40, 90, 190],
@@ -237,17 +267,20 @@ function sizeFor(typeId) {
 function allTags() { const s = new Set(); S.items.forEach(i => (i.tags || []).forEach(t => s.add(t))); return [...s].sort(); }
 /* tags on items plus the saved tag list from Setup */
 function knownTags() { return [...new Set([...allTags(), ...(S.settings.tagLibrary || [])])].sort(); }
+const MATERIALS = ['acrylic', 'cashmere', 'cotton', 'denim', 'elastane', 'fleece', 'leather', 'linen', 'merino', 'modal', 'nylon', 'organic cotton', 'polyester', 'rayon', 'recycled polyester', 'silk', 'spandex', 'suede', 'tri-blend', 'viscose', 'wool'];
 function editDist(a, b) {
   let row = [...Array(b.length + 1).keys()];
   for (let i = 1; i <= a.length; i++) { let prev = row[0]; row[0] = i; for (let j = 1; j <= b.length; j++) { const t = row[j]; row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; } }
   return row[b.length];
 }
 /* tag entry: each tag becomes a chip. Known tags are suggested as you type (close spellings too),
-   and a tag that matches nothing known is marked "new" so typos stand out. Returns a getter. */
-function tagField(box, initial) {
-  const tags = [...initial], known = knownTags(), isKnown = t => known.includes(t);
-  const counts = {}; S.items.forEach(i => (i.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
-  box.innerHTML = `<div class="tagbox"><span class="tagchips"></span><input class="taginput" placeholder="Type a tag" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done"></div><div class="tagsugg"></div>`;
+   and a tag that matches nothing known is marked "new" so typos stand out. Returns a getter.
+   Also used for materials, with field 'materials' and the common materials as extras. */
+function tagField(box, initial, { field = 'tags', extra = S.settings.tagLibrary || [], noun = 'tag' } = {}) {
+  const tags = [...initial], counts = {};
+  S.items.forEach(i => (i[field] || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  const known = [...new Set([...Object.keys(counts), ...extra])].sort(), isKnown = t => known.includes(t);
+  box.innerHTML = `<div class="tagbox"><span class="tagchips"></span><input class="taginput" placeholder="Type a ${noun}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done"></div><div class="tagsugg"></div>`;
   const chips = $('.tagchips', box), inp = $('.taginput', box), sugg = $('.tagsugg', box);
   const push = t => { t = t.trim().toLowerCase(); if (t && !tags.includes(t)) tags.push(t); };
   const draw = () => {
@@ -259,9 +292,9 @@ function tagField(box, initial) {
       if (q.length >= 3) close = known.filter(t => !t.includes(q) && editDist(q, t) <= (q.length > 5 ? 2 : 1));
     } else list = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
     list = [...list, ...close].filter(t => !tags.includes(t)).slice(0, 12);
-    sugg.innerHTML = (q && !list.length ? '' : `<span class="muted small">${q ? (close.length && !list.some(t => t.includes(q)) ? 'Did you mean' : 'Your tags') : list.length ? 'Most used' : 'Start typing to see your tags'} </span>`)
+    sugg.innerHTML = (q && !list.length ? '' : `<span class="muted small">${q ? (close.length && !list.some(t => t.includes(q)) ? 'Did you mean' : `Your ${noun}s`) : list.length ? 'Most used' : `Start typing to see your ${noun}s`} </span>`)
       + list.map(t => `<button class="tag" data-add="${esc(t)}" type="button">+ ${esc(t)}</button>`).join('')
-      + (q && !isKnown(q) && !tags.includes(q) ? `<button class="tag new" data-add="${esc(q)}" type="button">+ new tag “${esc(q)}”</button>` : '');
+      + (q && !isKnown(q) && !tags.includes(q) ? `<button class="tag new" data-add="${esc(q)}" type="button">+ new ${noun} “${esc(q)}”</button>` : '');
   };
   chips.onclick = e => { const b = e.target.closest('[data-i]'); if (b) { tags.splice(Number(b.dataset.i), 1); draw(); } };
   sugg.onclick = e => { const b = e.target.closest('[data-add]'); if (b) { push(b.dataset.add); inp.value = ''; draw(); inp.focus(); } };
@@ -337,6 +370,7 @@ function go(t) {
 function refresh() { go(tab); }
 
 /* ================= LOG ================= */
+const slotName = typeId => groupKey(typeId).startsWith('g:') ? groupName(groupKey(typeId)) : typeName(typeId);
 const logState = { date: today(), draft: null };
 function newDraft(templateId) {
   const tpl = S.templates.find(t => t.id === templateId) || (templateId === '' ? null : S.templates[0]);
@@ -356,12 +390,14 @@ function coverLabel(date) {
   return 'Automatic (first item with a photo)';
 }
 function renderLog() {
-  const d = logState.date, ents = S.entries.filter(e => e.date === d);
+  const d = logState.date, ents = S.entries.filter(e => e.date === d), future = d > today();
+  const wornE = ents.filter(e => !e.planned), planE = ents.filter(e => e.planned);
+  const overdue = S.entries.filter(e => e.planned && e.date < today()).map(e => e.date).sort();
   if (!logState.draft) logState.draft = newDraft();
   const dr = logState.draft;
   const slotHtml = (s, i) => {
     const it = itemById(s.itemId);
-    return `<button class="slot ${it ? 'filled' : ''}" data-slot="${i}" type="button"><span class="st">${esc(typeName(s.typeId))}</span>${it ? thumb(it) : '<div class="thumb"><span class="ph">＋</span></div>'}<span>${it ? esc(it.name) : 'Choose'}</span></button>`;
+    return `<button class="slot ${it ? 'filled' : ''}" data-slot="${i}" type="button"><span class="st">${esc(slotName(s.typeId))}</span>${it ? thumb(it) : '<div class="thumb"><span class="ph">＋</span></div>'}<span>${it ? esc(it.name) : 'Choose'}</span></button>`;
   };
   const extraHtml = (id, i) => { const it = itemById(id); return `<button class="slot filled" data-extra="${i}" type="button"><span class="st">${esc(typeName(it?.typeId))}</span>${thumb(it)}<span>${esc(it?.name)}</span></button>`; };
   const chosen = [...dr.slots.map(s => s.itemId), ...dr.extra].filter(Boolean);
@@ -377,16 +413,20 @@ function renderLog() {
       ${S.locations.length ? `<label class="recent small muted" style="display:flex;gap:6px;align-items:center">Dressing at <select id="logLoc" style="width:auto;padding:5px 8px"><option value="">Anywhere</option>${S.locations.map(l => `<option value="${l.id}" ${l.id === S.settings.logLocation ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>` : ''}</div>
     <section class="card daycover">${photoThumb(dayCoverSrc(d))}<div class="grow"><div class="label">Day cover</div><div class="muted small">${esc(coverLabel(d))}</div></div>
       <button class="ghost" data-a="cover" type="button">Change</button></section>
-    <h2>${ents.length ? 'Worn this day' : 'Nothing logged this day'}</h2>
-    ${ents.map(e => `<section class="card entry"><div class="spread"><div class="label">${esc(S.templates.find(t => t.id === e.templateId)?.name || 'Outfit')}</div>
+    ${overdue.length && d === today() ? `<section class="card spread" style="margin-top:12px"><span class="small">${overdue.length} past plan${overdue.length > 1 ? 's' : ''} not marked as worn yet</span><button class="ghost" data-a="overdue" type="button">Review</button></section>` : ''}
+    ${planE.length ? `<h2>Planned</h2>${planE.map(e => `<section class="card entry plan"><div class="spread"><div class="label">${esc(S.templates.find(t => t.id === e.templateId)?.name || 'Outfit')} <span class="muted small">· planned</span></div>
+        <div class="row">${future ? '' : `<button class="primary" data-wore="${e.id}" type="button">Wore it</button>`}<button class="ghost" data-edit="${e.id}" type="button">Edit</button><button class="danger" data-del="${e.id}" type="button">Delete</button></div></div>
+        <div class="pieces">${e.itemIds.map(id => { const it = itemById(id); return it ? `<div class="piece">${thumb(it)}<span>${esc(it.name)}</span></div>` : ''; }).join('')}</div></section>`).join('')}` : ''}
+    ${future ? (planE.length ? '' : '<h2>Nothing planned yet</h2>') + '<p class="help">Planned outfits don’t count as wears. On the day, open it here and tap “Wore it”.</p>' : `<h2>${wornE.length ? 'Worn this day' : 'Nothing logged this day'}</h2>`}
+    ${wornE.map(e => `<section class="card entry"><div class="spread"><div class="label">${esc(S.templates.find(t => t.id === e.templateId)?.name || 'Outfit')}</div>
         <div class="row"><button class="ghost" data-edit="${e.id}" type="button">Edit</button><button class="danger" data-del="${e.id}" type="button">Delete</button></div></div>
         <div class="pieces">${e.itemIds.map(id => { const it = itemById(id); if (!it) return ''; const f = e.fits?.[id]; return `<button class="piece" data-fit="${id}" data-entry="${e.id}" type="button">${thumb(it)}<span>${esc(it.name)}</span><span class="fit ${f?.r ? 'f-' + f.r : ''}">${f?.r ? esc(fitLabel(f.r)) : 'Rate fit'}</span></button>`; }).join('')}</div></section>`).join('')}
-    <h2>${dr.editingId ? 'Edit outfit' : 'Log an outfit'}</h2>
+    <h2>${dr.editingId ? (planE.some(e => e.id === dr.editingId) ? 'Edit plan' : 'Edit outfit') : future ? 'Plan an outfit' : 'Log an outfit'}</h2>
     <section class="card">
       <label class="field"><span>Template</span><select id="tpl">${S.templates.map(t => `<option value="${t.id}" ${t.id === dr.templateId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}<option value="" ${!dr.templateId ? 'selected' : ''}>No template</option></select></label>
       <div class="slots">${dr.slots.map(slotHtml).join('')}${dr.extra.map(extraHtml).join('')}<button class="slot add" data-a="addextra" type="button">＋ Add item</button></div>
       ${pairs.length ? `<div class="pairs">Worn together before: ${pairs.join(' · ')}</div>` : ''}
-      <div class="row end">${dr.editingId ? '<button class="ghost" data-a="canceledit" type="button">Cancel</button>' : ''}<button class="primary" data-a="saveentry" type="button">${dr.editingId ? 'Save changes' : 'Save outfit'}</button></div>
+      <div class="row end">${dr.editingId ? '<button class="ghost" data-a="canceledit" type="button">Cancel</button>' : ''}<button class="primary" data-a="saveentry" type="button">${dr.editingId ? 'Save changes' : future ? 'Save plan' : 'Save outfit'}</button></div>
     </section>`;
   const v = view();
   const setDate = nd => { logState.date = nd; if (!logState.draft.editingId) logState.draft = newDraft(logState.draft.templateId); renderLog(); };
@@ -400,7 +440,7 @@ function renderLog() {
   $('#tpl', v).onchange = e => { const keepEdit = dr.editingId; logState.draft = newDraft(e.target.value); logState.draft.editingId = keepEdit; renderLog(); };
   $$('[data-slot]', v).forEach(b => b.onclick = () => {
     const s = dr.slots[b.dataset.slot];
-    pick({ typeId: s.typeId, title: 'Choose ' + typeName(s.typeId).toLowerCase(), current: s.itemId, date: d }, id => { s.itemId = id; renderLog(); });
+    pick({ typeId: s.typeId, title: 'Choose ' + slotName(s.typeId).toLowerCase(), current: s.itemId, date: d }, id => { s.itemId = id; renderLog(); });
   });
   $$('[data-extra]', v).forEach(b => b.onclick = () => { dr.extra.splice(Number(b.dataset.extra), 1); renderLog(); toast('Removed from outfit'); });
   $('[data-a=addextra]', v).onclick = () => pick({ typeId: null, title: 'Add an item', date: d }, id => { if (id && !chosen.includes(id)) dr.extra.push(id); renderLog(); });
@@ -411,13 +451,21 @@ function renderLog() {
     if (dr.editingId) {
       const e = S.entries.find(x => x.id === dr.editingId);
       Object.assign(e, { templateId: dr.templateId, slots: dr.slots.map(s => ({ ...s })), itemIds: ids });
-    } else S.entries.push({ id: uid(), date: d, templateId: dr.templateId, slots: dr.slots.map(s => ({ ...s })), itemIds: ids, created: Date.now() });
+    } else S.entries.push({ id: uid(), date: d, templateId: dr.templateId, slots: dr.slots.map(s => ({ ...s })), itemIds: ids, created: Date.now(), ...(future ? { planned: true } : {}) });
     const wasEdit = !!dr.editingId;
     logState.draft = newDraft(dr.templateId); await save('entries'); renderLog();
-    toast(wasEdit ? 'Outfit updated' : 'Outfit saved');
+    toast(wasEdit ? 'Outfit updated' : future ? 'Plan saved' : 'Outfit saved');
+    if (!future) restToast(ids, d);
+  };
+  $$('[data-wore]', v).forEach(b => b.onclick = async () => {
+    const e = S.entries.find(x => x.id === b.dataset.wore); delete e.planned;
+    await save('entries'); renderLog(); toast('Marked as worn'); restToast(e.itemIds, e.date);
+  });
+  const od = $('[data-a=overdue]', v); if (od) od.onclick = () => setDate(overdue[0]);
+  function restToast(ids, d) {
     const rested = ids.map(itemById).filter(i => { const st = stats(i); return st.resting && st.dates[st.dates.length - 1] === d && st.restUntil > d; });
     if (rested.length) setTimeout(() => toast(`${rested.map(i => i.name).join(', ')} hit its wear limit and is now resting`), 2700);
-  };
+  }
   $$('[data-edit]', v).forEach(b => b.onclick = () => {
     const e = S.entries.find(x => x.id === b.dataset.edit);
     const tpl = S.templates.find(t => t.id === e.templateId);
@@ -461,8 +509,8 @@ function pick({ typeId, title, current, date }, cb) {
       $$('[data-t]', c).forEach(b => b.onclick = () => { typeFilter = b.dataset.t || null; drawChips(); draw(); });
     };
     const draw = () => {
-      let items = S.items.filter(i => !typeFilter || i.typeId === typeFilter);
-      if (!showAll) items = items.filter(i => stats(i).status === 'active');
+      let items = S.items.filter(i => !typeFilter || (typeId && typeFilter === typeId ? groupKey(i.typeId) === groupKey(typeId) : i.typeId === typeFilter));
+      if (!showAll) items = items.filter(i => statusOn(i, date || today()) === 'active');
       if (here) items = items.filter(i => i.location === S.settings.logLocation);
       if (q) items = items.filter(i => matchQ(i, q));
       // least recently worn first, so the rotation stays even
@@ -479,7 +527,7 @@ function pick({ typeId, title, current, date }, cb) {
     drawChips(); draw();
   });
 }
-const matchQ = (i, q) => [i.name, i.brand, i.store, i.size, locName(i.location), typeName(i.typeId), ...(i.tags || []), ...(i.colors || [])].join(' ').toLowerCase().includes(q);
+const matchQ = (i, q) => [i.name, i.brand, i.store, i.size, locName(i.location), typeName(i.typeId), ...(i.tags || []), ...(i.colors || []), ...(i.materials || [])].join(' ').toLowerCase().includes(q);
 
 /* ================= CLOSET ================= */
 const closet = { chip: 'all', q: '', sort: 'last', status: 'active', loc: '', fit: '' };
@@ -564,10 +612,12 @@ function openDetail(id, range = { from: '', to: '' }) {
     <div class="detail-top">${thumb(it)}<div class="stack" style="gap:4px">
       <div class="muted small">${esc([typeName(it.typeId), it.size, it.brand, it.store].filter(Boolean).join(' · '))}</div>
       ${(it.colors || []).length ? `<div class="small">${esc(it.colors.join(', '))}</div>` : ''}
+      ${(it.materials || []).length ? `<div class="small">${esc(it.materials.join(', '))}</div>` : ''}
+      ${/^https?:\/\//i.test(it.link || '') ? `<a class="small" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">Open link ↗</a>` : ''}
       <div>${(it.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
       <label class="small muted" style="display:flex;gap:6px;align-items:center">Kept at <select id="dLoc" style="width:auto;padding:4px 8px">${locOptions(it.location)}</select></label>
       <div class="small">${effPrice(it) != null ? `Paid ${money(effPrice(it))}${num(it.discountPrice) != null && num(it.price) != null ? ` <span class="muted">(list ${money(num(it.price))})</span>` : ''}` : '<span class="muted">No price yet</span>'}${it.purchaseDate ? ` · bought ${prettyDate(it.purchaseDate)}` : ''}</div>
-      <div class="small">${esc(limTxt)}</div><div class="small"><b>${esc(rotTxt)}</b></div>
+      <div class="small">${esc(limTxt)}</div><div class="small"><b>${esc(rotTxt)}</b>${nextPlan(id) ? ` · planned for ${prettyDate(nextPlan(id))}` : ''}</div>
       ${it.notes ? `<div class="small muted">${esc(it.notes)}</div>` : ''}
     </div></div>
     <div class="statgrid">
@@ -597,7 +647,7 @@ function openDetail(id, range = { from: '', to: '' }) {
     $$('[data-fe]', sh).forEach(li => li.onclick = () => openFit({ itemId: id, entryId: li.dataset.fe }));
     $$('[data-ft]', sh).forEach(li => li.onclick = () => openFit({ itemId: id, tryOnId: li.dataset.ft }));
     $('[data-a=wore]', sh).onclick = async () => {
-      const t = today(), ents = S.entries.filter(e => e.date === t);
+      const t = today(), ents = worn().filter(e => e.date === t);
       if (ents.length) { const e = ents[ents.length - 1]; if (!e.itemIds.includes(id)) e.itemIds.push(id); }
       else S.entries.push({ id: uid(), date: t, templateId: '', slots: [], itemIds: [id], created: Date.now() });
       await save('entries'); toast(ents.length ? 'Added to today’s outfit' : 'Logged for today'); openDetail(id, range); if (tab !== 'settings') refresh();
@@ -612,7 +662,7 @@ function openDetail(id, range = { from: '', to: '' }) {
 function openEditor(item, { typeId = null, onSave } = {}) {
   const isNew = !item;
   const startType = typeId || S.types[0]?.id;
-  const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brand: '', store: '', size: sizeFor(startType), colors: [], location: S.settings.logLocation || '', tags: [], price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
+  const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brand: '', store: '', size: sizeFor(startType), colors: [], location: S.settings.logLocation || '', tags: [], materials: [], link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
   let photo = it.photo, typeTouched = !isNew || !!typeId;
   const dl = (id, vals) => `<datalist id="${id}">${vals.map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
   openModal(`${head(isNew ? 'New item' : 'Edit item')}
@@ -628,6 +678,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="field"><span>Store purchased</span><input id="fStore" list="dlStore" value="${esc(it.store)}"></label>
       <label class="field full"><span>Colours (comma separated)</span><input id="fColors" value="${esc((it.colors || []).join(', '))}" placeholder="navy, white"></label>
       <div class="full tagsugg" id="colSugg"></div>
+      <div class="field full"><span>Materials</span><div id="fMats"></div></div>
       <label class="field"><span>Kept at</span><select id="fLoc">${locOptions(it.location)}</select></label>
       <label class="field"><span>Purchase date</span><input type="date" id="fDate" value="${esc(it.purchaseDate)}"></label>
       <label class="field"><span>Purchase price ($)</span><input type="number" step="0.01" min="0" id="fPrice" value="${esc(it.price)}"></label>
@@ -636,6 +687,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="field full"><span>Estimated wears before you started tracking</span><input type="number" min="0" step="1" id="fEst" value="${esc(it.estWears)}" placeholder="0"></label>
       <label class="field"><span>Wear limit (wears)</span><input type="number" min="1" step="1" id="fLimW" value="${esc(it.limit?.wears ?? '')}" placeholder="type default"></label>
       <label class="field"><span>Then rest (months)</span><input type="number" min="0" step="1" id="fLimM" value="${esc(it.limit?.restMonths ?? '')}" placeholder="type default"></label>
+      <label class="field full"><span>Link (product page, old app…)</span><input id="fLink" type="url" inputmode="url" value="${esc(it.link || '')}" placeholder="https://"></label>
       <label class="field full"><span>Notes</span><textarea id="fNotes">${esc(it.notes)}</textarea></label>
       <label class="check full"><input type="checkbox" id="fRet" ${it.retired ? 'checked' : ''}> Retired: gone for good (given away, worn out). Not the same as resting after a wear limit.</label>
     </div>
@@ -668,7 +720,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
         if (p.retailer) $('#fStore', sh).value = p.retailer.replace(/\s*\((in-store|online)\)\s*$/i, '');
         if (p.price != null) $('#fPrice', sh).value = p.price;
         if (p.date) $('#fDate', sh).value = p.date;
-        if (p.size) sizeIn.value = p.size;
+        if (p.size) sizeIn.value = cleanSize(p.size);
         if (p.color) splitTags(p.color.replace(/\//g, ',')).forEach(c => addTo(colIn, c));
         if (!typeTouched) { const g = guessType(p.item); if (g) { setType(g); it.typeId = g; } }
         box.innerHTML = `<p class="muted small">Filled in from your ${esc(p.retailer)} purchase on ${prettyDate(p.date)}. Check it and add anything missing.</p>`;
@@ -687,11 +739,13 @@ function openEditor(item, { typeId = null, onSave } = {}) {
     };
     $('[data-a=nophoto]', sh).onclick = e => { photo = null; $('#edPhoto', sh).innerHTML = photoThumb(null); e.target.hidden = true; };
     const getTags = tagField($('#fTags', sh), it.tags || []);
+    const getMats = tagField($('#fMats', sh), it.materials || [], { field: 'materials', extra: MATERIALS, noun: 'material' });
     $('[data-a=save]', sh).onclick = async () => {
       const name = nameIn.value.trim(); if (!name) { nameIn.focus(); return toast('Give it a name'); }
       const lw = num($('#fLimW', sh).value), lm = num($('#fLimM', sh).value);
       Object.assign(it, {
-        name, typeId: typeSel.value, brand: $('#fBrand', sh).value.trim(), store: $('#fStore', sh).value.trim(), size: sizeIn.value.trim(),
+        name, typeId: typeSel.value, brand: $('#fBrand', sh).value.trim(), store: $('#fStore', sh).value.trim(), size: cleanSize(sizeIn.value),
+        materials: getMats(), link: $('#fLink', sh).value.trim(),
         colors: splitTags(colIn.value), location: $('#fLoc', sh).value,
         purchaseDate: $('#fDate', sh).value, price: $('#fPrice', sh).value, discountPrice: $('#fDisc', sh).value,
         tags: getTags(), estWears: $('#fEst', sh).value, notes: $('#fNotes', sh).value.trim(),
@@ -772,7 +826,7 @@ function editFilter(f) {
 /* ================= CALENDAR ================= */
 const cal = { month: today().slice(0, 7), mode: 'cover' };
 function renderCalendar() {
-  if (cal.mode !== 'cover' && !typeById(cal.mode)) cal.mode = 'cover';
+  if (cal.mode !== 'cover' && !groupKeys().includes(cal.mode)) cal.mode = 'cover';
   const [y, m] = cal.month.split('-').map(Number);
   const first = new Date(y, m - 1, 1), pad = first.getDay(), daysIn = new Date(y, m, 0).getDate(), t = today();
   const monthName = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
@@ -781,26 +835,27 @@ function renderCalendar() {
   for (let i = 0; i < pad; i++) cells += '<div class="cal-cell out"></div>';
   for (let d = 1; d <= daysIn; d++) {
     const ds = `${cal.month}-${String(d).padStart(2, '0')}`;
-    const ids = [...new Set(S.entries.filter(e => e.date === ds).flatMap(e => e.itemIds))];
+    const dayE = S.entries.filter(e => e.date === ds), plan = dayE.length > 0 && dayE.every(e => e.planned);
+    const ids = [...new Set(dayE.flatMap(e => e.itemIds))];
     let inner = '', has = ids.length > 0;
     if (cal.mode === 'cover') {
       const src = dayCoverSrc(ds);
       inner = src ? `<img src="${src}" alt="">` : (has ? `<span class="txt">${esc(ids.map(itemById).filter(Boolean).map(i => i.name).join(', '))}</span>` : '');
     } else {
-      const its = ids.map(itemById).filter(i => i && i.typeId === cal.mode);
-      its.forEach(i => counts.set(i.id, (counts.get(i.id) || 0) + 1));
+      const its = ids.map(itemById).filter(i => i && groupKey(i.typeId) === cal.mode);
+      if (!plan) its.forEach(i => counts.set(i.id, (counts.get(i.id) || 0) + 1));
       has = its.length > 0;
       if (its.length) inner = (its[0].photo ? `<img src="${its[0].photo}" alt="">` : `<span class="txt">${esc(its[0].name)}</span>`) + (its.length > 1 ? `<span class="more">+${its.length - 1}</span>` : '');
     }
-    cells += `<button class="cal-cell ${has ? 'has' : ''} ${ds === t ? 'today' : ''}" data-d="${ds}" type="button" aria-label="${prettyDate(ds)}"><span class="n">${d}</span>${inner}</button>`;
+    cells += `<button class="cal-cell ${has ? 'has' : ''} ${has && plan ? 'plan' : ''} ${ds === t ? 'today' : ''}" data-d="${ds}" type="button" aria-label="${prettyDate(ds)}${has && plan ? ', planned' : ''}"><span class="n">${d}</span>${inner}</button>`;
   }
   const sum = cal.mode === 'cover' ? '' : (() => {
     const list = [...counts].map(([id, n]) => ({ it: itemById(id), n })).sort((a, b) => b.n - a.n);
-    return `<section class="card calsum"><div class="label">${esc(typeName(cal.mode))} this month</div>${list.length ? `<ul>${list.map(x => `<li data-item="${x.it.id}" style="cursor:pointer"><span>${esc(x.it.name)}</span><b>${x.n}×</b></li>`).join('')}</ul>` : '<p class="muted small">None worn this month.</p>'}</section>`;
+    return `<section class="card calsum"><div class="label">${esc(groupName(cal.mode))} this month</div>${list.length ? `<ul>${list.map(x => `<li data-item="${x.it.id}" style="cursor:pointer"><span>${esc(x.it.name)}</span><b>${x.n}×</b></li>`).join('')}</ul>` : '<p class="muted small">None worn this month.</p>'}</section>`;
   })();
   view().innerHTML = `
     <section class="calhead"><button class="icon" data-a="pm" type="button" aria-label="Previous month">‹</button><div class="mname">${monthName}</div><button class="icon" data-a="nm" type="button" aria-label="Next month">›</button></section>
-    <div class="chips calmode">${[{ id: 'cover', name: 'Day covers' }, ...S.types].map(x => `<button class="chip ${cal.mode === x.id ? 'on' : ''}" data-m="${x.id}" type="button">${esc(x.name)}</button>`).join('')}</div>
+    <div class="chips calmode">${[{ id: 'cover', name: 'Day covers' }, ...groupKeys().map(k => ({ id: k, name: groupName(k) }))].map(x => `<button class="chip ${cal.mode === x.id ? 'on' : ''}" data-m="${x.id}" type="button">${esc(x.name)}</button>`).join('')}</div>
     <div class="cal">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => `<div class="dow">${x}</div>`).join('')}${cells}</div>
     ${sum}`;
   const v = view();
@@ -817,13 +872,15 @@ function renderSettings() {
   const st = S.settings;
   view().innerHTML = `
     <h2>Clothing types</h2>
-    <section class="card"><p class="help" style="margin-top:0">Each type gets its own filter chip and calendar view. <b>Size</b> fills in automatically when you add an item of that type. A wear limit (wears, then months of rest) applies to every item of the type unless the item sets its own.</p>
+    <section class="card"><p class="help" style="margin-top:0">Each type gets its own filter chip and calendar view. <b>Size</b> fills in automatically when you add an item of that type. Types with the same <b>Group</b> (like Tees) share one calendar view and fill the same outfit slot. A wear limit (wears, then months of rest) applies to every item of the type unless the item sets its own.</p>
       ${S.types.map(t => `<div class="set-row" data-type="${t.id}">
         <label class="field"><span>Name</span><input data-f="name" value="${esc(t.name)}"></label>
         <label class="field"><span>Size</span><input data-f="size" value="${esc(t.defaultSize || '')}" placeholder="—"></label>
+        <label class="field"><span>Group</span><input data-f="group" list="dlGroup" value="${esc(t.group || '')}" placeholder="—"></label>
         <label class="field"><span>Limit</span><input type="number" min="1" data-f="w" value="${esc(t.limit?.wears ?? '')}" placeholder="none"></label>
         <label class="field"><span>Rest mo</span><input type="number" min="0" data-f="m" value="${esc(t.limit?.restMonths ?? '')}" placeholder="0"></label>
         <button class="icon" data-deltype="${t.id}" type="button" title="${used(t.id) ? 'In use by ' + used(t.id) + ' items' : 'Delete type'}" aria-label="Delete type" ${used(t.id) ? 'disabled' : ''}>✕</button></div>`).join('')}
+      <datalist id="dlGroup">${[...new Set(S.types.map(t => t.group).filter(Boolean))].map(g => `<option value="${esc(g)}">`).join('')}</datalist>
       <div class="row end"><button class="ghost" data-a="addtype" type="button">＋ Add type</button></div></section>
 
     <h2>Locations</h2>
@@ -851,6 +908,11 @@ function renderSettings() {
     <section class="card stack"><p class="help" style="margin:0">Import a spreadsheet of past purchases. When you type a new item’s name, matching purchases appear so you can fill in store, price, date, size and colour with one tap. Columns used: <code>date, retailer, item, size, color, price</code>.</p>
       <div class="row"><label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import purchases CSV<input type="file" accept=".csv,text/csv" id="purchIn" hidden></label>
         ${S.purchases.length ? `<span class="muted small">${S.purchases.length} purchases loaded</span><button class="danger" data-a="clearpurch" type="button">Clear</button>` : '<span class="muted small">None loaded</span>'}</div></section>
+
+    <h2>Photos</h2>
+    <section class="card stack"><p class="help" style="margin:0">Add photos to many items at once. Pick image files named after the item (like <code>Navy oxford.jpg</code>), or named with the ID at the end of the item’s link. A Rotation photo pack (<code>.json</code>) works too.</p>
+      <label class="check"><input type="checkbox" id="phReplace"> Replace photos items already have</label>
+      <div class="row"><label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import photos<input type="file" accept="image/*,.json,application/json" id="phIn" multiple hidden></label><span class="muted small" id="phMsg"></span></div></section>
 
     <h2>Counting</h2>
     <section class="card stack">
@@ -884,7 +946,7 @@ function renderSettings() {
         <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import items CSV<input type="file" accept=".csv,text/csv" id="csvItemsIn" hidden></label>
         <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import wear log CSV<input type="file" accept=".csv,text/csv" id="csvWearsIn" hidden></label>
         <button class="ghost" data-a="csvtemplate" type="button">Blank items template</button></div>
-      <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, location, brand, store, tags, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags and colours are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, or same name and type) update it instead of adding a copy, and new types are created automatically. Export also includes wear counts and cost per wear for reference; those columns are ignored on import. Photos stay in the app.<br>
+      <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, location, brand, store, tags, link, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours and materials are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, or same name and type) update it instead of adding a copy, and new types are created automatically. Export also includes wear counts and cost per wear for reference; those columns are ignored on import. Photos stay in the app.<br>
       <b>Wear log CSV</b> columns: <code>date, item_name</code> (or <code>item_id</code>), optionally <code>outfit</code> to group rows into one outfit and <code>fit, fit_note</code>. Rows with the same date and outfit become one outfit. Imported wears are added to what you already have.</p>
     </section>`;
   const v = view();
@@ -893,7 +955,7 @@ function renderSettings() {
     const t = typeById(row.dataset.type);
     $$('input', row).forEach(inp => inp.onchange = async () => {
       const name = $('[data-f=name]', row).value.trim(); if (name) t.name = name;
-      t.defaultSize = $('[data-f=size]', row).value.trim();
+      t.defaultSize = $('[data-f=size]', row).value.trim(); t.group = $('[data-f=group]', row).value.trim();
       const w = num($('[data-f=w]', row).value), m = num($('[data-f=m]', row).value);
       t.limit = w ? { wears: w, restMonths: m || 0 } : null; await save('types');
     });
@@ -907,6 +969,13 @@ function renderSettings() {
   $$('[data-loc]', v).forEach(row => { const l = S.locations.find(x => x.id === row.dataset.loc); $('input', row).onchange = async e => { l.name = e.target.value.trim() || l.name; await save('locations'); }; });
   $$('[data-delloc]', v).forEach(b => twoStep(b, '?', async () => { const id = b.dataset.delloc; S.locations = S.locations.filter(l => l.id !== id); S.items.forEach(i => { if (i.location === id) i.location = ''; }); if (S.settings.logLocation === id) S.settings.logLocation = ''; await save('locations', 'items'); renderSettings(); }));
   $('[data-a=addloc]', v).onclick = async () => { S.locations.push({ id: uid(), name: 'New place' }); await save('locations'); renderSettings(); $$('[data-loc] input').pop().select(); };
+  $('#phIn', v).onchange = async e => {
+    const files = [...e.target.files]; if (!files.length) return;
+    const msg = $('#phMsg', v); msg.textContent = 'Importing…';
+    try { const r = await importPhotos(files, $('#phReplace', v).checked); msg.textContent = `${r.added} added${r.kept ? `, ${r.kept} kept (item already had one)` : ''}${r.unmatched.length ? `, ${r.unmatched.length} not matched: ${r.unmatched.slice(0, 8).join(', ')}${r.unmatched.length > 8 ? '…' : ''}` : ''}`; }
+    catch (err) { msg.textContent = err.message; }
+    e.target.value = '';
+  };
   $('#purchIn', v).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const n = await importPurchasesCSV(await f.text()); toast(`${n} purchases loaded for auto-fill`); renderSettings(); } catch (err) { toast(err.message); } };
   const cp = $('[data-a=clearpurch]', v); if (cp) twoStep(cp, 'Tap to confirm', async () => { S.purchases = []; await save('purchases'); renderSettings(); });
   $('[data-a=addlib]', v).onclick = async () => {
@@ -914,7 +983,7 @@ function renderSettings() {
     S.settings.tagLibrary = [...S.settings.tagLibrary, ...add].sort(); await save(); toast(`${add.length} tag${add.length > 1 ? 's' : ''} added`); renderSettings();
   };
   $$('[data-libdel]', v).forEach(b => b.onclick = async () => { S.settings.tagLibrary = S.settings.tagLibrary.filter(t => t !== b.dataset.libdel); await save(); renderSettings(); });
-  $('[data-a=addtype]', v).onclick = async () => { S.types.push({ id: uid(), name: 'New type', limit: null, defaultSize: '' }); await save('types'); renderSettings(); $$('[data-type] [data-f=name]').pop().select(); };
+  $('[data-a=addtype]', v).onclick = async () => { S.types.push({ id: uid(), name: 'New type', limit: null, defaultSize: '', group: '' }); await save('types'); renderSettings(); $$('[data-type] [data-f=name]').pop().select(); };
   // templates
   $$('[data-tpl]', v).forEach(card => {
     const tp = S.templates.find(x => x.id === card.dataset.tpl);
@@ -941,7 +1010,7 @@ function renderSettings() {
   $('[data-a=export]', v).onclick = () => download(`rotation-backup-${today()}.json`, JSON.stringify(snapshot()), 'application/json');
   $('[data-a=csvitems]', v).onclick = () => download(`rotation-items-${today()}.csv`, itemsCSV(), 'text/csv');
   $('[data-a=csvwears]', v).onclick = () => download(`rotation-wears-${today()}.csv`, wearsCSV(), 'text/csv');
-  $('[data-a=csvtemplate]', v).onclick = () => download('rotation-items-template.csv', toCSV([ITEM_COLS, ['Navy oxford', 'Work shirt', 'XL', 'navy;white', 'My place', 'Uniqlo', 'Uniqlo SoHo', 'work;oxford', '39.90', '29.90', '2025-03-14', '20', '', '', '', '']]), 'text/csv');
+  $('[data-a=csvtemplate]', v).onclick = () => download('rotation-items-template.csv', toCSV([ITEM_COLS, ['Navy oxford', 'Work shirt', 'XL', 'navy;white', 'cotton', 'Home', 'Uniqlo', 'Uniqlo SoHo', 'work;oxford', '', '39.90', '29.90', '2025-03-14', '20', '', '', '', '']]), 'text/csv');
   $('#csvItemsIn', v).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const r = await importItemsCSV(await f.text()); toast(`Items: ${r.added} added, ${r.updated} updated${r.skipped ? `, ${r.skipped} skipped` : ''}`); renderSettings(); } catch (err) { toast(err.message); } };
   $('#csvWearsIn', v).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const r = await importWearsCSV(await f.text()); toast(`Wear log: ${r.outfits} outfits added${r.missing ? `, ${r.missing} rows skipped (item not found)` : ''}`); renderSettings(); } catch (err) { toast(err.message); } };
   $('#importFile', v).onchange = async e => {
@@ -951,7 +1020,7 @@ function renderSettings() {
 }
 
 /* ---------- CSV ---------- */
-const ITEM_COLS = ['name', 'type', 'size', 'colors', 'location', 'brand', 'store', 'tags', 'purchase_price', 'discount_price', 'purchase_date', 'estimated_past_wears', 'wear_limit', 'rest_months', 'retired', 'notes'];
+const ITEM_COLS = ['name', 'type', 'size', 'colors', 'materials', 'location', 'brand', 'store', 'tags', 'link', 'purchase_price', 'discount_price', 'purchase_date', 'estimated_past_wears', 'wear_limit', 'rest_months', 'retired', 'notes'];
 function download(name, text, type) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -982,14 +1051,14 @@ function itemsCSV() {
   const hdr = ['id', ...ITEM_COLS, 'tracked_wears', 'total_wears', `wears_past_${days}_days`, 'cost_per_wear', 'last_worn', 'status'];
   return toCSV([hdr, ...S.items.map(i => {
     const st = stats(i);
-    return [i.id, i.name, typeName(i.typeId), i.size || '', (i.colors || []).join(';'), locName(i.location), i.brand, i.store, (i.tags || []).join(';'), i.price, i.discountPrice, i.purchaseDate, i.estWears,
+    return [i.id, i.name, typeName(i.typeId), i.size || '', (i.colors || []).join(';'), (i.materials || []).join(';'), locName(i.location), i.brand, i.store, (i.tags || []).join(';'), i.link || '', i.price, i.discountPrice, i.purchaseDate, i.estWears,
       i.limit?.wears ?? '', i.limit?.restMonths ?? '', i.retired ? 'yes' : '', i.notes,
       st.tracked, st.total, st.recent, st.cpw != null ? st.cpw.toFixed(2) : '', st.last || '', st.status];
   })]);
 }
 function wearsCSV() {
   const rows = [['date', 'outfit', 'template', 'item_id', 'item_name', 'type', 'fit', 'fit_note']];
-  [...S.entries].sort((a, b) => a.date.localeCompare(b.date)).forEach(e => e.itemIds.forEach(id => {
+  [...worn()].sort((a, b) => a.date.localeCompare(b.date)).forEach(e => e.itemIds.forEach(id => {
     const it = itemById(id), f = e.fits?.[id]; rows.push([e.date, e.id, S.templates.find(t => t.id === e.templateId)?.name || '', id, it?.name || '', typeName(it?.typeId), f?.r ? fitLabel(f.r) : '', f?.note || '']);
   }));
   return toCSV(rows);
@@ -997,7 +1066,7 @@ function wearsCSV() {
 function typeFor(name) {
   const n = (name || '').trim(); if (!n) return S.types[0].id;
   let t = S.types.find(x => x.name.toLowerCase() === n.toLowerCase());
-  if (!t) { t = { id: uid(), name: n, limit: null }; S.types.push(t); }
+  if (!t) { t = { id: uid(), name: n, limit: null, defaultSize: '', group: '' }; S.types.push(t); }
   return t.id;
 }
 async function importItemsCSV(text) {
@@ -1007,11 +1076,13 @@ async function importItemsCSV(text) {
     const typeId = typeFor(r.type || r.category);
     let it = (r.id && itemById(r.id)) || S.items.find(i => i.name.toLowerCase() === name.toLowerCase() && i.typeId === typeId);
     const isNew = !it;
-    if (isNew) { it = { id: uid(), name, typeId, size: sizeFor(typeId), colors: [], location: '', tryOns: [], brand: '', store: '', tags: [], price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
+    if (isNew) { it = { id: uid(), name, typeId, size: sizeFor(typeId), colors: [], location: '', tryOns: [], brand: '', store: '', tags: [], materials: [], link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
     const has = k => k in r && r[k] !== '';
     it.name = name; it.typeId = typeId;
     if (has('brand')) it.brand = r.brand;
-    if (has('size')) it.size = r.size;
+    if (has('size')) it.size = cleanSize(r.size);
+    if (has('materials') || has('material')) it.materials = splitTags((r.materials || r.material).replace(/;/g, ','));
+    if (has('link') || has('url')) it.link = r.link || r.url;
     if (has('colors') || has('colours') || has('color') || has('colour')) it.colors = splitTags((r.colors || r.colours || r.color || r.colour).replace(/;/g, ','));
     if (has('location')) { const ln = r.location.trim(); let l = S.locations.find(x => x.name.toLowerCase() === ln.toLowerCase()); if (!l) { l = { id: uid(), name: ln }; S.locations.push(l); } it.location = l.id; }
     if (has('store') || has('store_purchased') || has('retailer')) it.store = r.store || r.store_purchased || r.retailer;
@@ -1026,6 +1097,32 @@ async function importItemsCSV(text) {
     if (isNew) { S.items.push(it); added++; } else updated++;
   }
   await save('items', 'types', 'locations'); return { added, updated, skipped };
+}
+/* photos for many items at once: image files named after an item (or the ID at the end of its link),
+   or a photo pack {app:'rotation-photos', photos:[{link?, name?, data}]} */
+const normKey = s => String(s || '').toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+function itemForPhoto({ link, name }) {
+  const lk = String(link || '').trim(), id = lk.split(/[/?#]/).filter(Boolean).pop() || '';
+  if (lk) { const it = S.items.find(i => i.link && (i.link === lk || (id.length >= 8 && i.link.includes(id)))); if (it) return it; }
+  const n = normKey(name); if (!n) return null;
+  return S.items.find(i => normKey(i.name) === n) || (n.length >= 8 && S.items.find(i => i.link && normKey(i.link).split(' ').includes(n))) || null;
+}
+async function importPhotos(files, replace) {
+  const r = { added: 0, kept: 0, unmatched: [] };
+  const put = (it, data, label) => {
+    if (!it) return r.unmatched.push(label);
+    if (it.photo && !replace) return r.kept++;
+    it.photo = data; r.added++;
+  };
+  for (const f of files) {
+    if (/\.json$/i.test(f.name) || f.type === 'application/json') {
+      let pack; try { pack = JSON.parse(await f.text()); } catch { throw new Error(f.name + ' isn’t a photo pack'); }
+      if (pack?.app !== 'rotation-photos' || !Array.isArray(pack.photos)) throw new Error(f.name + ' isn’t a photo pack');
+      for (const p of pack.photos) if (/^data:image\/(jpeg|png|webp);base64,/.test(p.data || '')) put(itemForPhoto(p), p.data, p.name || p.link);
+    } else put(itemForPhoto({ name: f.name }), await readImage(f), f.name);
+  }
+  if (r.added) await save('items');
+  return r;
 }
 async function importPurchasesCSV(text) {
   const rows = parseCSV(text);
