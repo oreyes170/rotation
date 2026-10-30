@@ -101,7 +101,11 @@ textarea{min-height:64px;resize:vertical}
 .badge.near{background:var(--ok-bg);color:var(--ok)}
 .empty{padding:28px 12px;text-align:center;color:var(--muted)}
 
-.daybar{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;margin-top:6px}
+.daybar{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:8px;align-items:center;margin-top:6px}
+/* iOS gives date inputs an intrinsic width that ignores the grid; drop the native look so it fits its cell */
+input[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;min-height:40px}
+.daybar input[type=date]{text-align:center}
+input[type=date]::-webkit-date-and-time-value{text-align:inherit}
 .daycover{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center;margin-top:12px}
 .daycover .thumb{border-radius:10px}
 .label{font-weight:600}
