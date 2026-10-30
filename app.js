@@ -946,8 +946,9 @@ function renderSettings() {
         <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import items CSV<input type="file" accept=".csv,text/csv" id="csvItemsIn" hidden></label>
         <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import wear log CSV<input type="file" accept=".csv,text/csv" id="csvWearsIn" hidden></label>
         <button class="ghost" data-a="csvtemplate" type="button">Blank items template</button></div>
+      <label class="check"><input type="checkbox" id="csvWearsEst"> When importing a wear log, take those wears off each item’s estimated past wears (they were already counted)</label>
       <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, location, brand, store, tags, link, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours and materials are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, or same name and type) update it instead of adding a copy, and new types are created automatically. Export also includes wear counts and cost per wear for reference; those columns are ignored on import. Photos stay in the app.<br>
-      <b>Wear log CSV</b> columns: <code>date, item_name</code> (or <code>item_id</code>), optionally <code>outfit</code> to group rows into one outfit and <code>fit, fit_note</code>. Rows with the same date and outfit become one outfit. Imported wears are added to what you already have.</p>
+      <b>Wear log CSV</b> columns: <code>date, item_name</code> (or <code>item_id</code>, or the item’s <code>link</code>), optionally <code>outfit</code> to group rows into one outfit and <code>fit, fit_note</code>. Rows with the same date and outfit become one outfit. Imported wears are added to what you already have; a wear already logged for that item and day is skipped.</p>
     </section>`;
   const v = view();
   // types
@@ -1012,7 +1013,7 @@ function renderSettings() {
   $('[data-a=csvwears]', v).onclick = () => download(`rotation-wears-${today()}.csv`, wearsCSV(), 'text/csv');
   $('[data-a=csvtemplate]', v).onclick = () => download('rotation-items-template.csv', toCSV([ITEM_COLS, ['Navy oxford', 'Work shirt', 'XL', 'navy;white', 'cotton', 'Home', 'Uniqlo', 'Uniqlo SoHo', 'work;oxford', '', '39.90', '29.90', '2025-03-14', '20', '', '', '', '']]), 'text/csv');
   $('#csvItemsIn', v).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const r = await importItemsCSV(await f.text()); toast(`Items: ${r.added} added, ${r.updated} updated${r.skipped ? `, ${r.skipped} skipped` : ''}`); renderSettings(); } catch (err) { toast(err.message); } };
-  $('#csvWearsIn', v).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const r = await importWearsCSV(await f.text()); toast(`Wear log: ${r.outfits} outfits added${r.missing ? `, ${r.missing} rows skipped (item not found)` : ''}`); renderSettings(); } catch (err) { toast(err.message); } };
+  $('#csvWearsIn', v).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const r = await importWearsCSV(await f.text(), { fromEstimates: $('#csvWearsEst', v).checked }); toast(`Wear log: ${r.outfits} outfits added${r.dupes ? `, ${r.dupes} wears already logged` : ''}${r.missing ? `, ${r.missing} rows skipped (item not found)` : ''}`); renderSettings(); } catch (err) { toast(err.message); } };
   $('#importFile', v).onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try { const data = JSON.parse(await f.text()); await applySnapshot(data); toast('Backup imported'); refresh(); } catch (err) { toast('That file is not a Rotation backup'); }
@@ -1101,7 +1102,7 @@ async function importItemsCSV(text) {
 /* photos for many items at once: image files named after an item (or the ID at the end of its link),
    or a photo pack {app:'rotation-photos', photos:[{link?, name?, data}]} */
 const normKey = s => String(s || '').toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
-function itemForPhoto({ link, name }) {
+function itemForPhoto({ link, name }) { // also used to match wear log rows by link
   const lk = String(link || '').trim(), id = lk.split(/[/?#]/).filter(Boolean).pop() || '';
   if (lk) { const it = S.items.find(i => i.link && (i.link === lk || (id.length >= 8 && i.link.includes(id)))); if (it) return it; }
   const n = normKey(name); if (!n) return null;
@@ -1132,14 +1133,21 @@ async function importPurchasesCSV(text) {
   if (!list.length) throw new Error('No rows with an item column found');
   S.purchases = list; await save('purchases'); return list.length;
 }
-async function importWearsCSV(text) {
-  const rows = parseCSV(text); const groups = new Map(); let missing = 0;
+/* wears that are already logged (same item, same day) are skipped, so importing a file twice is harmless.
+   fromEstimates: these wears were already counted in estimated past wears, so take them off. */
+async function importWearsCSV(text, { fromEstimates = false } = {}) {
+  const rows = parseCSV(text); const groups = new Map(); let missing = 0, dupes = 0;
+  const had = new Set(worn().flatMap(e => e.itemIds.map(id => e.date + '|' + id)));
   for (const r of rows) {
     const date = csvDate(r.date); if (!date) { missing++; continue; }
     let it = r.item_id && itemById(r.item_id);
     const nm = (r.item_name || r.name || r.item || '').toLowerCase();
     if (!it && nm) it = S.items.find(i => i.name.toLowerCase() === nm);
+    if (!it && (r.link || r.url)) it = itemForPhoto({ link: r.link || r.url });
     if (!it) { missing++; continue; }
+    if (had.has(date + '|' + it.id)) { dupes++; continue; }
+    had.add(date + '|' + it.id);
+    if (fromEstimates) it.estWears = String(Math.max(0, (parseInt(it.estWears) || 0) - 1));
     const key = date + '|' + (r.outfit || r.outfit_id || '');
     if (!groups.has(key)) groups.set(key, { date, ids: new Set(), tpl: r.template, fits: {} });
     groups.get(key).ids.add(it.id);
@@ -1150,7 +1158,7 @@ async function importWearsCSV(text) {
     const tpl = S.templates.find(t => t.name.toLowerCase() === (g.tpl || '').toLowerCase());
     S.entries.push({ id: uid(), date: g.date, templateId: tpl?.id || '', slots: [], itemIds: [...g.ids], fits: g.fits, created: Date.now(), imported: true });
   }
-  await save('entries'); return { outfits: groups.size, missing };
+  await save('entries', 'items'); return { outfits: groups.size, missing, dupes };
 }
 
 /* ---------- backup ---------- */
