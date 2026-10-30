@@ -59,7 +59,7 @@ function defaults() {
   const id = n => types.find(t => t.name === n).id;
   return {
     types, items: [], entries: [], days: {}, filters: [], purchases: [],
-    locations: ['My place', 'Mom’s', 'Girlfriend’s'].map(name => ({ id: uid(), name })),
+    locations: [{ id: uid(), name: 'Home' }],
     templates: [{ id: uid(), name: 'Daily', slots: [id('T-shirt'), id('Work shirt'), id('Cap'), id('Tie')] }],
     settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], schema: 2 }
   };
@@ -848,7 +848,7 @@ function renderSettings() {
       <div class="row end"><button class="ghost" data-a="addfilter" type="button">＋ New filter</button></div></section>
 
     <h2>Purchase history (for auto-fill)</h2>
-    <section class="card stack"><p class="help" style="margin:0">Import a spreadsheet of past purchases (like your Closet Ledger). When you type a new item’s name, matching purchases appear so you can fill in store, price, date, size and colour with one tap. Columns used: <code>date, retailer, item, size, color, price</code>.</p>
+    <section class="card stack"><p class="help" style="margin:0">Import a spreadsheet of past purchases. When you type a new item’s name, matching purchases appear so you can fill in store, price, date, size and colour with one tap. Columns used: <code>date, retailer, item, size, color, price</code>.</p>
       <div class="row"><label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import purchases CSV<input type="file" accept=".csv,text/csv" id="purchIn" hidden></label>
         ${S.purchases.length ? `<span class="muted small">${S.purchases.length} purchases loaded</span><button class="danger" data-a="clearpurch" type="button">Clear</button>` : '<span class="muted small">None loaded</span>'}</div></section>
 

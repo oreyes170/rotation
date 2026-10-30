@@ -20,4 +20,4 @@ Backups go to one file, `rotation-backup.json`, in your Drive. To use the same c
 Setup → Spreadsheet (CSV) exports your items (with wear counts and cost per wear) and your wear log, and imports both. Download the blank items template to see the columns. Importing items updates matching items instead of duplicating them; importing a wear log adds to your history, so import each file once.
 
 ## Your own data files
-Keep `rotation-purchase-history.csv` and `rotation-import-from-whering.csv` out of the GitHub repo, because a public repo is visible to anyone. Import them from Setup on your device instead.
+Keep your own spreadsheets (purchase history, exports from other apps) out of the GitHub repo, because a public repo is visible to anyone. Import them from Setup on your device instead.
