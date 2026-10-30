@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 17; // shown in the header; bump with CACHE in sw.js
+const VERSION = 18; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -271,6 +271,7 @@ function sizeFor(typeId) {
 function allTags() { const s = new Set(); S.items.forEach(i => (i.tags || []).forEach(t => s.add(t))); return [...s].sort(); }
 /* tags on items plus the saved tag list from Setup */
 function knownTags() { return [...new Set([...allTags(), ...(S.settings.tagLibrary || [])])].sort(); }
+const COUNTRIES = ['Bangladesh', 'Cambodia', 'Canada', 'China', 'Egypt', 'El Salvador', 'Guatemala', 'Haiti', 'Honduras', 'India', 'Indonesia', 'Italy', 'Japan', 'Jordan', 'Mexico', 'Nicaragua', 'Pakistan', 'Peru', 'Portugal', 'Sri Lanka', 'Turkey', 'USA', 'Vietnam'];
 const MATERIALS = ['acrylic', 'cashmere', 'cotton', 'denim', 'elastane', 'fleece', 'leather', 'linen', 'merino', 'modal', 'nylon', 'organic cotton', 'polyester', 'rayon', 'recycled polyester', 'silk', 'spandex', 'suede', 'tri-blend', 'viscose', 'wool'];
 function editDist(a, b) {
   let row = [...Array(b.length + 1).keys()];
@@ -534,7 +535,7 @@ function pick({ typeId, title, current, date }, cb) {
     drawChips(); draw();
   });
 }
-const matchQ = (i, q) => [i.name, i.brand, i.store, i.size, locName(i.location), typeName(i.typeId), ...(i.tags || []), ...(i.colors || []), ...(i.materials || [])].join(' ').toLowerCase().includes(q);
+const matchQ = (i, q) => [i.name, i.brand, i.store, i.size, locName(i.location), typeName(i.typeId), ...(i.tags || []), ...(i.colors || []), ...(i.materials || []), i.madeIn].join(' ').toLowerCase().includes(q);
 
 /* ================= CLOSET ================= */
 const closet = { chip: 'all', q: '', sort: 'last', status: 'active', loc: '', fit: '' };
@@ -619,7 +620,7 @@ function openDetail(id, range = { from: '', to: '' }) {
     <div class="detail-top">${thumb(it)}<div class="stack" style="gap:4px">
       <div class="muted small">${esc([typeName(it.typeId), it.size, it.brand, it.store].filter(Boolean).join(' · '))}</div>
       ${(it.colors || []).length ? `<div class="small">${esc(it.colors.join(', '))}</div>` : ''}
-      ${(it.materials || []).length ? `<div class="small">${esc(it.materials.join(', '))}</div>` : ''}
+      ${(it.materials || []).length || it.madeIn ? `<div class="small">${esc([(it.materials || []).join(', '), it.madeIn && 'made in ' + it.madeIn].filter(Boolean).join(' · '))}</div>` : ''}
       ${/^https?:\/\//i.test(it.link || '') ? `<a class="small" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">Open link ↗</a>` : ''}
       <div>${(it.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
       <label class="small muted" style="display:flex;gap:6px;align-items:center">Kept at <select id="dLoc" style="width:auto;padding:4px 8px">${locOptions(it.location)}</select></label>
@@ -669,7 +670,7 @@ function openDetail(id, range = { from: '', to: '' }) {
 function openEditor(item, { typeId = null, onSave } = {}) {
   const isNew = !item;
   const startType = typeId || S.types[0]?.id;
-  const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brand: '', store: '', size: sizeFor(startType), colors: [], location: S.settings.logLocation || '', tags: [], materials: [], link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
+  const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brand: '', store: '', size: sizeFor(startType), colors: [], location: S.settings.logLocation || '', tags: [], materials: [], madeIn: '', link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
   let photo = it.photo, typeTouched = !isNew || !!typeId;
   const dl = (id, vals) => `<datalist id="${id}">${vals.map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
   openModal(`${head(isNew ? 'New item' : 'Edit item')}
@@ -686,6 +687,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="field full"><span>Colours (comma separated)</span><input id="fColors" value="${esc((it.colors || []).join(', '))}" placeholder="navy, white"></label>
       <div class="full tagsugg" id="colSugg"></div>
       <div class="field full"><span>Materials</span><div id="fMats"></div></div>
+      <label class="field full"><span>Made in</span><input id="fMade" list="dlMade" value="${esc(it.madeIn || '')}" placeholder="e.g. Bangladesh" autocomplete="off"></label>
       <label class="field"><span>Kept at</span><select id="fLoc">${locOptions(it.location)}</select></label>
       <label class="field"><span>Purchase date</span><input type="date" id="fDate" value="${esc(it.purchaseDate)}"></label>
       <label class="field"><span>Purchase price ($)</span><input type="number" step="0.01" min="0" id="fPrice" value="${esc(it.price)}"></label>
@@ -699,7 +701,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="check full"><input type="checkbox" id="fRet" ${it.retired ? 'checked' : ''}> Retired: gone for good (given away, worn out). Not the same as resting after a wear limit.</label>
     </div>
     <p class="help">Estimated wears count toward total wears${S.settings.cpwIncludesEstimate ? ' and cost per wear' : ''}. They never change your tracked history, recent-day counts or wear limits.</p>
-    ${dl('dlBrand', distinct('brand'))}${dl('dlStore', [...new Set([...distinct('store'), ...S.purchases.map(p => p.retailer)])].filter(Boolean).sort())}${dl('dlSize', [...new Set([...distinct('size'), ...S.types.map(t => t.defaultSize).filter(Boolean)])].sort())}
+    ${dl('dlBrand', distinct('brand'))}${dl('dlMade', [...new Set([...distinct('madeIn'), ...COUNTRIES])].sort((a, b) => a.localeCompare(b)))}${dl('dlStore', [...new Set([...distinct('store'), ...S.purchases.map(p => p.retailer)])].filter(Boolean).sort())}${dl('dlSize', [...new Set([...distinct('size'), ...S.types.map(t => t.defaultSize).filter(Boolean)])].sort())}
     <div class="row end">${isNew ? '' : '<button class="danger" data-a="del" type="button">Delete</button>'}<button class="ghost" data-x type="button">Cancel</button><button class="primary" data-a="save" type="button">Save</button></div>`, sh => {
     $$('[data-x]', sh).forEach(b => b.onclick = closeModal);
     const typeSel = $('#fType', sh), sizeIn = $('#fSize', sh), nameIn = $('#fName', sh), colIn = $('#fColors', sh);
@@ -752,7 +754,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       const lw = num($('#fLimW', sh).value), lm = num($('#fLimM', sh).value);
       Object.assign(it, {
         name, typeId: typeSel.value, brand: $('#fBrand', sh).value.trim(), store: $('#fStore', sh).value.trim(), size: cleanSize(sizeIn.value),
-        materials: getMats(), link: $('#fLink', sh).value.trim(),
+        materials: getMats(), madeIn: $('#fMade', sh).value.trim(), link: $('#fLink', sh).value.trim(),
         colors: splitTags(colIn.value), location: $('#fLoc', sh).value,
         purchaseDate: $('#fDate', sh).value, price: $('#fPrice', sh).value, discountPrice: $('#fDisc', sh).value,
         tags: getTags(), estWears: $('#fEst', sh).value, notes: $('#fNotes', sh).value.trim(),
@@ -960,7 +962,7 @@ function renderSettings() {
         <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import wear log CSV<input type="file" accept=".csv,text/csv" id="csvWearsIn" hidden></label>
         <button class="ghost" data-a="csvtemplate" type="button">Blank items template</button></div>
       <label class="check"><input type="checkbox" id="csvWearsEst"> When importing a wear log, take those wears off each item’s estimated past wears (they were already counted)</label>
-      <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, location, brand, store, tags, link, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours and materials are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, same <code>link</code>, or same name and type) update it instead of adding a copy. A row with no <code>name</code> only updates the item it matches by <code>id</code> or <code>link</code>, changing just the columns it has, and new types are created automatically. Export also includes wear counts and cost per wear for reference; those columns are ignored on import. Photos stay in the app.<br>
+      <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, made_in, location, brand, store, tags, link, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours and materials are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, same <code>link</code>, or same name and type) update it instead of adding a copy. A row with no <code>name</code> only updates the item it matches by <code>id</code> or <code>link</code>, changing just the columns it has, and new types are created automatically. Export also includes wear counts and cost per wear for reference; those columns are ignored on import. Photos stay in the app.<br>
       <b>Wear log CSV</b> columns: <code>date, item_name</code> (or <code>item_id</code>, or the item’s <code>link</code>), optionally <code>outfit</code> to group rows into one outfit, <code>fit, fit_note</code>, and <code>not_counted</code> (yes for a day that isn’t a wear). Rows with the same date and outfit become one outfit. Imported wears are added to what you already have; a wear already logged for that item and day is skipped.</p>
     </section>`;
   const v = view();
@@ -1024,7 +1026,7 @@ function renderSettings() {
   $('[data-a=export]', v).onclick = () => download(`rotation-backup-${today()}.json`, JSON.stringify(snapshot()), 'application/json');
   $('[data-a=csvitems]', v).onclick = () => download(`rotation-items-${today()}.csv`, itemsCSV(), 'text/csv');
   $('[data-a=csvwears]', v).onclick = () => download(`rotation-wears-${today()}.csv`, wearsCSV(), 'text/csv');
-  $('[data-a=csvtemplate]', v).onclick = () => download('rotation-items-template.csv', toCSV([ITEM_COLS, ['Navy oxford', 'Work shirt', 'XL', 'navy;white', 'cotton', 'Home', 'Uniqlo', 'Uniqlo SoHo', 'work;oxford', '', '39.90', '29.90', '2025-03-14', '20', '', '', '', '']]), 'text/csv');
+  $('[data-a=csvtemplate]', v).onclick = () => download('rotation-items-template.csv', toCSV([ITEM_COLS, ['Navy oxford', 'Work shirt', 'XL', 'navy;white', 'cotton', 'Vietnam', 'Home', 'Uniqlo', 'Uniqlo SoHo', 'work;oxford', '', '39.90', '29.90', '2025-03-14', '20', '', '', '', '']]), 'text/csv');
   $('#csvItemsIn', v).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const r = await importItemsCSV(await f.text()); toast(`Items: ${r.added} added, ${r.updated} updated${r.skipped ? `, ${r.skipped} skipped` : ''}`); renderSettings(); } catch (err) { toast(err.message); } };
   $('#csvWearsIn', v).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const r = await importWearsCSV(await f.text(), { fromEstimates: $('#csvWearsEst', v).checked }); toast(`Wear log: ${r.outfits} outfits added${r.dupes ? `, ${r.dupes} wears already logged` : ''}${r.missing ? `, ${r.missing} rows skipped (item not found)` : ''}`); renderSettings(); } catch (err) { toast(err.message); } };
   $('#importFile', v).onchange = async e => {
@@ -1034,7 +1036,7 @@ function renderSettings() {
 }
 
 /* ---------- CSV ---------- */
-const ITEM_COLS = ['name', 'type', 'size', 'colors', 'materials', 'location', 'brand', 'store', 'tags', 'link', 'purchase_price', 'discount_price', 'purchase_date', 'estimated_past_wears', 'wear_limit', 'rest_months', 'retired', 'notes'];
+const ITEM_COLS = ['name', 'type', 'size', 'colors', 'materials', 'made_in', 'location', 'brand', 'store', 'tags', 'link', 'purchase_price', 'discount_price', 'purchase_date', 'estimated_past_wears', 'wear_limit', 'rest_months', 'retired', 'notes'];
 function download(name, text, type) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -1065,7 +1067,7 @@ function itemsCSV() {
   const hdr = ['id', ...ITEM_COLS, 'tracked_wears', 'total_wears', `wears_past_${days}_days`, 'cost_per_wear', 'last_worn', 'status'];
   return toCSV([hdr, ...S.items.map(i => {
     const st = stats(i);
-    return [i.id, i.name, typeName(i.typeId), i.size || '', (i.colors || []).join(';'), (i.materials || []).join(';'), locName(i.location), i.brand, i.store, (i.tags || []).join(';'), i.link || '', i.price, i.discountPrice, i.purchaseDate, i.estWears,
+    return [i.id, i.name, typeName(i.typeId), i.size || '', (i.colors || []).join(';'), (i.materials || []).join(';'), i.madeIn || '', locName(i.location), i.brand, i.store, (i.tags || []).join(';'), i.link || '', i.price, i.discountPrice, i.purchaseDate, i.estWears,
       i.limit?.wears ?? '', i.limit?.restMonths ?? '', i.retired ? 'yes' : '', i.notes,
       st.tracked, st.total, st.recent, st.cpw != null ? st.cpw.toFixed(2) : '', st.last || '', st.status];
   })]);
@@ -1093,13 +1095,14 @@ async function importItemsCSV(text) {
     const typeId = r.type || r.category || !byKey ? typeFor(r.type || r.category) : byKey.typeId;
     let it = byKey || S.items.find(i => i.name.toLowerCase() === name.toLowerCase() && i.typeId === typeId);
     const isNew = !it;
-    if (isNew) { it = { id: uid(), name, typeId, size: sizeFor(typeId), colors: [], location: '', tryOns: [], brand: '', store: '', tags: [], materials: [], link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
+    if (isNew) { it = { id: uid(), name, typeId, size: sizeFor(typeId), colors: [], location: '', tryOns: [], brand: '', store: '', tags: [], materials: [], madeIn: '', link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
     const has = k => k in r && r[k] !== '';
     if (name) it.name = name; it.typeId = typeId;
     if (has('brand')) it.brand = r.brand;
     if (has('size')) it.size = cleanSize(r.size);
     if (has('materials') || has('material')) it.materials = splitTags((r.materials || r.material).replace(/;/g, ','));
     if (has('link') || has('url')) it.link = r.link || r.url;
+    if (has('made_in') || has('country')) it.madeIn = r.made_in || r.country;
     if (has('colors') || has('colours') || has('color') || has('colour')) it.colors = splitTags((r.colors || r.colours || r.color || r.colour).replace(/;/g, ','));
     if (has('location')) { const ln = r.location.trim(); let l = S.locations.find(x => x.name.toLowerCase() === ln.toLowerCase()); if (!l) { l = { id: uid(), name: ln }; S.locations.push(l); } it.location = l.id; }
     if (has('store') || has('store_purchased') || has('retailer')) it.store = r.store || r.store_purchased || r.retailer;

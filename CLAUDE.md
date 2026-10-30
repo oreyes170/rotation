@@ -19,7 +19,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Storage:** IndexedDB database `rotation`, store `kv`. Each collection is saved under its own key, and `save(...keys)` writes those keys plus `settings`.
 - **Collections:**
   - **`types`:** `{id, name, limit:{wears, restMonths}|null, defaultSize, group}`. Defaults: Short-sleeve tee, Long-sleeve tee and Jersey (group "Tees"), then Work shirt, Cap, Tie, Shoes, Pants, Jacket, Other.
-  - **`items`:** `{id, name, typeId, brand, store, size, colors[], materials[], location, tags[], link, price, discountPrice, purchaseDate, estWears, limit, notes, retired, photo (JPEG data URL, ~720px), tryOns:[{id,date,r,note}], created}`
+  - **`items`:** `{id, name, typeId, brand, store, size, colors[], materials[], madeIn, location, tags[], link, price, discountPrice, purchaseDate, estWears, limit, notes, retired, photo (JPEG data URL, ~720px), tryOns:[{id,date,r,note}], created}`
   - **`entries`** (one logged outfit): `{id, date (YYYY-MM-DD), templateId, slots:[{typeId,itemId}], itemIds[], fits:{itemId:{r,note}}, noWear?:[itemId], created, imported?, planned?}`
   - **`templates`:** `{id, name, slots:[typeId]}`. The default "Daily" template is Short-sleeve tee, Work shirt, Cap, Tie.
   - **`days`:** `{date: {cover:{kind:'item',itemId}|{kind:'photo',data}}}`
@@ -41,6 +41,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Location:** where an item is kept. The "Dressing at" choice on the Log screen filters the item picker to that place. Every "Kept at" menu has "＋ New place…" to add one on the spot.
 - **Size:** a new item gets its type's default size (tees default to XL), or else the size used most for that type. A "Men's"/"Women's" prefix is dropped (`cleanSize`).
 - **Materials** are entered as chips like tags, with common materials suggested.
+- **Made in:** a country per item, suggested from countries already used plus a short list of common ones. Searchable; `made_in` in the items CSV.
 - **Photo import** (Setup → Photos) matches image files by item name or by the ID at the end of the item's `link`, or reads a photo pack `{app:'rotation-photos', photos:[{link?, name?, data}]}`. Existing photos are kept unless "Replace" is ticked.
 - **Tags** are entered as chips. Known tags (on items, plus `tagLibrary`) are suggested as you type, including close spellings, and an unknown tag is marked "new" so typos stand out.
 - **Retired** means gone for good and is set by hand. **Resting** is temporary and comes from the wear limit.
