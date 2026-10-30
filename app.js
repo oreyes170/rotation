@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 16; // shown in the header; bump with CACHE in sw.js
+const VERSION = 17; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1323,6 +1323,19 @@ function renderSync(label) {
     });
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
+  // swipe left/right: next/previous day on Log, month on Calendar (not on sideways-scrolling chips or fields)
+  let swipe = null;
+  view().addEventListener('touchstart', e => {
+    swipe = e.touches.length === 1 && !e.target.closest('.chips, input, textarea, select') ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: e.timeStamp } : null;
+  }, { passive: true });
+  view().addEventListener('touchend', e => {
+    if (!swipe || !$('#modal').hidden) return;
+    const t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y, quick = e.timeStamp - swipe.t < 800; swipe = null;
+    if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < 2 * Math.abs(dy)) return;
+    const step = dx < 0 ? 1 : -1;
+    if (tab === 'log') { logState.date = addDays(logState.date, step); if (!logState.draft?.editingId) logState.draft = newDraft(logState.draft?.templateId); renderLog(); }
+    else if (tab === 'calendar') { const [y, m] = cal.month.split('-').map(Number); cal.month = fmt(new Date(y, m - 1 + step, 1)).slice(0, 7); renderCalendar(); }
+  }, { passive: true });
   // iOS can still zoom on a quick double tap: stop the zoom but keep the second tap as a tap
   let lastTap = 0, startXY = null;
   document.addEventListener('touchstart', e => { const t = e.touches[0]; startXY = e.touches.length === 1 ? [t.clientX, t.clientY] : null; }, { passive: true });

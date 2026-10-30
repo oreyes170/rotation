@@ -8,7 +8,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 
 ## Stack and files
 - Plain HTML/CSS/JS with no build step or framework, and no dependencies except Google Identity Services, which is loaded only when Drive is connected.
-  - `index.html`: the shell, plus a 4-tab bottom nav (Log, Closet, Calendar, Setup).
+  - `index.html`: the shell, plus a 4-tab bottom nav (Log, Closet, Calendar, Setup). Swiping left/right changes the day on Log and the month on Calendar.
   - `app.js`: all logic, in one file, organised by section comments.
   - `styles.css`: tokens on `:root` with a dark theme via `prefers-color-scheme`. Phone-first, so check it at 400px wide.
   - `sw.js`: service worker that serves the app from cache first. **Bump `CACHE` (`rotation-vN`) on every release, and `VERSION` at the top of `app.js` to the same N** (it's shown in the header; tap it to check for updates). A new version installs with fresh files and reloads the app once it takes over.
