@@ -15,6 +15,7 @@
 
 *{box-sizing:border-box}
 html,body{margin:0}
+html{touch-action:manipulation} /* no double-tap zoom; pinch zoom still works */
 body{background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));}
 img{max-width:100%;display:block}
