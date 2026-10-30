@@ -20,7 +20,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Collections:**
   - **`types`:** `{id, name, limit:{wears, restMonths}|null, defaultSize, group}`. Defaults: Short-sleeve tee, Long-sleeve tee and Jersey (group "Tees"), then Work shirt, Cap, Tie, Shoes, Pants, Jacket, Other.
   - **`items`:** `{id, name, typeId, brand, store, size, colors[], materials[], location, tags[], link, price, discountPrice, purchaseDate, estWears, limit, notes, retired, photo (JPEG data URL, ~720px), tryOns:[{id,date,r,note}], created}`
-  - **`entries`** (one logged outfit): `{id, date (YYYY-MM-DD), templateId, slots:[{typeId,itemId}], itemIds[], fits:{itemId:{r,note}}, created, imported?, planned?}`
+  - **`entries`** (one logged outfit): `{id, date (YYYY-MM-DD), templateId, slots:[{typeId,itemId}], itemIds[], fits:{itemId:{r,note}}, noWear?:[itemId], created, imported?, planned?}`
   - **`templates`:** `{id, name, slots:[typeId]}`. The default "Daily" template is Short-sleeve tee, Work shirt, Cap, Tie.
   - **`days`:** `{date: {cover:{kind:'item',itemId}|{kind:'photo',data}}}`
   - **`filters`:** `{id, name, typeIds[], tags[]}`. These are quick filters; every type also gets its own chip.
@@ -30,7 +30,8 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Backup and import:** `snapshot()` / `applySnapshot()` handle JSON backups. A restore replaces everything except the Drive settings.
 
 ## Rules the owner asked for (don't change without asking)
-- **Wears are derived from `entries`.** The same item is counted once per date. Use `worn()`, not `S.entries`, for anything that counts wears.
+- **Wears are derived from `entries`.** The same item is counted once per date. Use `worn()` and `counts(e, id)`, not `S.entries`/`itemIds`, for anything that counts wears.
+- **Not counted:** an outfit (checkbox when logging) or a single piece (checkbox in the piece's sheet) can be marked "Don't count as a wear", stored in `entry.noWear`. It still shows on the calendar and the day, but never counts toward wears, limits, last worn, pairings or the calendar's monthly tally. Used for e.g. a shirt kept on overnight, so it isn't penalised in the rotation.
 - **Planned outfits** are entries with `planned: true`, made by logging on a future date. They never count as wears, fits, pairings or exports until marked "Wore it" (which drops the flag). The Log screen flags past plans that weren't confirmed. For a future date, `statusOn()` counts earlier plans so a plan can't break a wear limit.
 - **Type groups:** types with the same `group` share one calendar view and fill the same outfit slot, but stay separate types for data. Ungrouped types stand alone.
 - **Estimated past wears (`estWears`)** add to total wears, and to cost per wear when the setting is on. They must never affect tracked history, the "worn in past X days" count, wear limits or the calendar.
@@ -58,7 +59,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 
 ## CSV
 - **Items:** import and export. Matching is by `id`, then `link`, then name plus type. A row with no name only updates the item it matches by `id` or `link`, and only the columns it has. Unknown types and locations are created automatically. Tags and colours are separated with `;`.
-- **Wear log:** import and export, with fit included. Rows match an item by `item_id`, name, or `link`. Imports add to the existing history; a wear already logged for that item and day is skipped. An optional checkbox takes imported wears off `estWears`, for wears that were already counted as estimates.
+- **Wear log:** import and export, with fit included. Rows match an item by `item_id`, name, or `link`; `not_counted` (yes) marks a day that isn't a wear. Imports add to the existing history; a wear already logged for that item and day is skipped. An optional checkbox takes imported wears off `estWears`, for wears that were already counted as estimates.
 - **Purchases:** import only, for auto-fill. Columns are `date, retailer, item, size, color, price`.
 - **Keep the owner's data files out of this public repo.** That includes exports from other wardrobe apps and purchase history.
 
