@@ -930,7 +930,7 @@ function renderSettings() {
       <details class="help"><summary>How to get a client ID (one time, about 5 minutes)</summary><ol>
         <li>Go to <code>console.cloud.google.com</code>, create a project, and enable the <b>Google Drive API</b>.</li>
         <li>Under <b>OAuth consent screen</b>, choose External, add yourself as a test user.</li>
-        <li>Under <b>Credentials</b>, create an <b>OAuth client ID</b> of type <b>Web application</b>. Add this page’s address as an authorised JavaScript origin: <code>${esc(location.origin)}</code></li>
+        <li>Under <b>Credentials</b>, create an <b>OAuth client ID</b> of type <b>Web application</b>. Add <code>${esc(location.origin)}</code> as an <b>authorised JavaScript origin</b>, and <code>${esc(Drive.redirectUri())}</code> as an <b>authorised redirect URI</b> (the iPhone home-screen app needs it).</li>
         <li>Paste the client ID above and tap Connect. Rotation only sees the one backup file it creates in your Drive.</li></ol></details>
     </section>
 
@@ -1184,8 +1184,18 @@ const Drive = {
     if (window.google?.accounts?.oauth2) return;
     await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.onload = res; s.onerror = () => rej(new Error('Could not reach Google. Are you online?')); document.head.appendChild(s); });
   },
-  async signIn() {
+  // An iPhone home-screen app can't use Google's sign-in popup, so it signs in by leaving the page and
+  // coming back with the token in the address (see fromRedirect). `after` says what to do on return.
+  redirectMode() { return navigator.standalone === true; },
+  redirectUri() { return location.origin + location.pathname.replace(/index\.html$/, ''); },
+  async signIn(after = 'connect') {
     if (!S.settings.clientId) throw new Error('Add your Google client ID in Setup first');
+    if (this.redirectMode()) {
+      const state = uid(); try { localStorage.setItem('rotation-oauth', JSON.stringify({ state, after })); } catch { }
+      location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({ client_id: S.settings.clientId, redirect_uri: this.redirectUri(),
+        response_type: 'token', scope: 'https://www.googleapis.com/auth/drive.file', state, include_granted_scopes: 'true' });
+      return new Promise(() => { });
+    }
     await this.loadLib();
     return new Promise((res, rej) => {
       const c = google.accounts.oauth2.initTokenClient({
@@ -1195,6 +1205,15 @@ const Drive = {
       });
       c.requestAccessToken({ prompt: '' });
     });
+  },
+  fromRedirect() {
+    const h = new URLSearchParams(location.hash.slice(1)); if (!h.has('access_token') && !h.has('error')) return null;
+    history.replaceState(null, '', location.pathname + location.search);
+    let saved = {}; try { saved = JSON.parse(localStorage.getItem('rotation-oauth') || '{}'); localStorage.removeItem('rotation-oauth'); } catch { }
+    if (h.has('error')) { toast('Google sign-in: ' + h.get('error')); return null; }
+    if (!saved.state || h.get('state') !== saved.state) return null;
+    this.token = h.get('access_token'); this.exp = Date.now() + (Number(h.get('expires_in') || 3600) - 60) * 1000;
+    return saved.after || 'connect';
   },
   async api(url, opt = {}) {
     const r = await fetch(url, { ...opt, headers: { ...(opt.headers || {}), Authorization: 'Bearer ' + this.token } });
@@ -1238,7 +1257,7 @@ async function backupNow(interactive) {
   if (backingUp) return;
   try {
     if (!navigator.onLine) throw new Error('You’re offline. Backup will wait until you’re back online.');
-    if (!Drive.ok()) { if (!interactive) return; await Drive.signIn(); }
+    if (!Drive.ok()) { if (!interactive) return; await Drive.signIn('backup'); }
     backingUp = true; renderSync('Backing up…');
     S.settings.driveFileId = await Drive.upload(JSON.stringify(snapshot()));
     S.settings.lastBackup = Date.now(); await DB.setMany({ settings: S.settings });
@@ -1248,7 +1267,7 @@ async function backupNow(interactive) {
 }
 async function restoreFromDrive() {
   try {
-    if (!Drive.ok()) await Drive.signIn();
+    if (!Drive.ok()) await Drive.signIn('restore');
     const r = await Drive.download(); if (!r) return toast('No backup found in your Drive yet');
     const n = r.snap.data?.items?.length ?? 0, e = r.snap.data?.entries?.length ?? 0;
     openModal(`${head('Restore from Drive?')}<p>The Drive backup from <b>${new Date(r.modified).toLocaleString()}</b> has ${n} items and ${e} outfits.</p>
@@ -1276,6 +1295,8 @@ function renderSync(label) {
   window.addEventListener('offline', () => renderSync());
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal').hidden) closeModal(); });
   renderSync(); go(S.items.length ? 'log' : 'closet');
+  const after = Drive.fromRedirect();
+  if (after) { go('settings'); renderSync(); if (after === 'backup') backupNow(true); else if (after === 'restore') restoreFromDrive(); else toast('Connected to Google Drive'); }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 })();

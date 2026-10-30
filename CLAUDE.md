@@ -52,6 +52,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 
 ## Google Drive backup
 - Uses Google Identity Services with a token client and scope `drive.file`, so the app only sees files it creates. The owner provides the OAuth client ID in Setup, and the authorised origin is `https://oreyes170.github.io`.
+- On an iPhone home-screen app (`navigator.standalone`), Google's popup doesn't work, so `Drive.signIn(after)` redirects to Google and back to `https://oreyes170.github.io/rotation/`, which must be an authorised redirect URI. `Drive.fromRedirect()` picks the token out of the address on load (checking `state`) and finishes the connect, backup or restore.
 - The backup is one file, `rotation-backup.json`. Auto-backup runs 4 seconds after a change, but only while a token is still valid.
 - **This has not been tested against a real Google account yet.**
 
