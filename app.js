@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 28; // shown in the header; bump with CACHE in sw.js
+const VERSION = 29; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1536,7 +1536,7 @@ function renderSync(label) {
 }
 
 /* ---------- theme ---------- */
-const THEME_BAR = { brown: '#2b1913', ipod: '#dfe3e8', aqua: '#d6d6d6' };   // status bar colour for themes that need their own
+const THEME_BAR = { brown: '#2b1913', ipod: '#c9d0bf', aqua: '#d6d6d6' };   // status bar colour for themes that need their own
 function applyTheme() {
   const t = S.settings.theme || 'auto', root = document.documentElement;
   if (t === 'auto') delete root.dataset.theme; else root.dataset.theme = t;
