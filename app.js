@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 24; // shown in the header; bump with CACHE in sw.js
+const VERSION = 25; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -682,7 +682,7 @@ function pick({ typeId, title, current, date }, cb) {
 const matchQ = (i, q) => [i.name, i.brand, i.store, i.size, locName(i.location), typeName(i.typeId), ...(i.tags || []), ...(i.colors || []), ...(i.materials || []), i.madeIn].join(' ').toLowerCase().includes(q);
 
 /* ================= CLOSET ================= */
-const closet = { chip: 'all', q: '', sort: 'last', status: 'active', loc: '', fit: '' };
+const closet = { chip: 'all', q: '', sort: 'last', status: 'active', loc: '', fit: '', photo: '' };
 function matchChip(item, chip) {
   if (chip === 'all') return true;
   if (chip.startsWith('t:')) return item.typeId === chip.slice(2);
@@ -710,6 +710,7 @@ function renderCloset() {
     <div class="toolbar" style="grid-template-columns:1fr 1fr">
       <select id="cloc" aria-label="Location"><option value="">Any location</option>${S.locations.map(l => `<option value="${l.id}" ${closet.loc === l.id ? 'selected' : ''}>At ${esc(l.name)}</option>`).join('')}<option value="none" ${closet.loc === 'none' ? 'selected' : ''}>Location not set</option></select>
       <select id="cfit" aria-label="Fit">${[['', 'Any fit'], ['tight', 'Last fit: tight'], ['good', 'Last fit: just right'], ['loose', 'Last fit: loose'], ['unrated', 'Fit not rated']].map(([v, l]) => `<option value="${v}" ${closet.fit === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <select id="cphoto" aria-label="Photo">${[['', 'Any photo'], ['none', 'No photo'], ['has', 'Has photo']].map(([v, l]) => `<option value="${v}" ${closet.photo === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     </div>
     <div class="spread" style="margin:4px 0 10px"><span class="muted small" id="ccount"></span>
       <span class="toolbar" style="margin:0;display:flex"><span class="recent">Worn in past <input type="number" min="1" id="cdays" value="${days}"> days</span></span></div>
@@ -723,6 +724,7 @@ function renderCloset() {
     else if (closet.status !== 'any') items = items.filter(i => st.get(i.id).status === closet.status);
     if (closet.q) items = items.filter(i => matchQ(i, closet.q));
     if (closet.loc) items = items.filter(i => closet.loc === 'none' ? !i.location : i.location === closet.loc);
+    if (closet.photo) items = items.filter(i => closet.photo === 'none' ? !i.photo : !!i.photo);
     if (closet.fit) items = items.filter(i => { const f = fitSummary(i.id); if (closet.fit === 'unrated') return !f; if (!f) return false; const sc = fitScore(f.last.r); return closet.fit === 'tight' ? sc < 0 : closet.fit === 'loose' ? sc > 0 : sc === 0; });
     const by = {
       last: (a, b) => (st.get(b.id).last || '').localeCompare(st.get(a.id).last || ''),
@@ -747,6 +749,7 @@ function renderCloset() {
   $('#csort', v).onchange = e => { closet.sort = e.target.value; draw(); };
   $('#cloc', v).onchange = e => { closet.loc = e.target.value; draw(); };
   $('#cfit', v).onchange = e => { closet.fit = e.target.value; draw(); };
+  $('#cphoto', v).onchange = e => { closet.photo = e.target.value; draw(); };
   $('#cdays', v).onchange = async e => { const n = Math.max(1, parseInt(e.target.value) || 30); S.settings.recentDays = n; await save(); renderCloset(); };
   $('[data-a=add]', v).onclick = () => openEditor(null, { typeId: closet.chip.startsWith('t:') ? closet.chip.slice(2) : null });
   draw();
