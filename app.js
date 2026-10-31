@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 20; // shown in the header; bump with CACHE in sw.js
+const VERSION = 21; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -222,6 +222,30 @@ const TYPE_WORDS = [
   [/\b(shoes?|sneakers?|boots?|loafers?|slippers?|sandals?|trainers?|clogs?)\b/i, 'shoes'], [/\b(pants?|jeans?|chinos?|trousers?|shorts|joggers?|slacks)\b/i, 'pants'],
   [/\b(jackets?|coats?|hoodies?|sweaters?|cardigans?|fleece|blazers?|parka|sweatshirt|crewneck)\b/i, 'jacket']
 ];
+/* What a product link says by itself (the app can't read store pages: browsers block that).
+   e.g. zappos.com/p/mens-hoka-gaviota-6-black-black/... → Zappos, Hoka, "Hoka Gaviota 6", black */
+const STORE_NAMES = { jcrew: 'J.Crew', '6pm': '6pm', hm: 'H&M', bananarepublic: 'Banana Republic', oldnavy: 'Old Navy', llbean: 'L.L.Bean', rei: 'REI', asos: 'ASOS' };
+const SHOE_STORES = ['zappos', '6pm', 'footlocker', 'finishline', 'dsw'];
+function parseStoreLink(text) {
+  const m = String(text || '').match(/https?:\/\/[^\s<>"']+/i); if (!m) return null;
+  let u; try { u = new URL(m[0]); } catch { return null; }
+  const host = u.hostname.replace(/^(www|m|shop|store|us)\./, '').split('.'), site = host.length > 1 ? host[host.length - 2] : host[0];
+  const title = w => w.length <= 2 && /\d/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1);
+  const known = (list, v) => list.find(x => x.toLowerCase().replace(/[^a-z0-9]/g, '') === v.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  const store = known(distinct('store'), site) || STORE_NAMES[site] || title(site);
+  // the product slug: the longest path part made of words joined by hyphens
+  const parts = u.pathname.split('/').map(p => decodeURIComponent(p).replace(/\.html?$/, '')).filter(p => /[a-z]{3}/i.test(p) && p.includes('-'));
+  let words = (parts.sort((a, b) => b.length - a.length)[0] || '').toLowerCase().split(/[-_]+/).filter(Boolean);
+  if (/^(mens|men|womens|women|unisex|kids|boys|girls)$/.test(words[0])) words.shift(); if (words[0] === 's') words.shift();
+  const colours = [];
+  while (words.length > 1 && PALETTE.some(p => p[0] === words[words.length - 1])) { const c = words.pop(); if (!colours.includes(c)) colours.unshift(c); }
+  // brand: one already in the closet, or on shoe stores, the first word of the slug
+  let brand = '';
+  for (const n of [2, 1]) { const b = words.length > n && known(distinct('brand'), words.slice(0, n).join(' ')); if (b) { brand = b; break; } }
+  if (!brand && SHOE_STORES.includes(site) && words.length > 1) brand = title(words[0]);
+  const name = words.map(title).join(' ');
+  return { link: m[0], store, brand, name, colours, typeId: guessType(name) || (SHOE_STORES.includes(site) ? guessType('shoes') : null) };
+}
 function guessType(text) {
   for (const [re, words] of TYPE_WORDS) if (re.test(text)) for (const word of words.split('|')) { const t = S.types.find(x => x.name.toLowerCase() === word || x.name.toLowerCase().replace(/s$/, '') === word); if (t) return t.id; }
   return null;
@@ -697,6 +721,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;text-align:center;background:var(--surface)">${photo ? 'Change photo' : 'Add photo'}<input type="file" accept="image/*" id="edFile" hidden></label>
       <button class="ghost" data-a="nophoto" type="button" ${photo ? '' : 'hidden'}>Remove photo</button></div></div>
     <div class="fields" style="margin-top:12px">
+      <label class="field full"><span>Store link (optional)</span><input id="fFromLink" type="url" inputmode="url" autocomplete="off" placeholder="Paste a product page link to fill in what it can"></label>
       <label class="field full"><span>Name</span><input id="fName" value="${esc(it.name)}" placeholder="e.g. Navy dot oxford" autocomplete="off"></label>
       <div class="full" id="edSugg"></div>
       <label class="field"><span>Type</span><select id="fType">${S.types.map(t => `<option value="${t.id}" ${t.id === it.typeId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
@@ -759,6 +784,15 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       });
     };
     nameIn.oninput = sugg;
+    // a pasted store link fills empty fields, then looks for the purchase in the history
+    $('#fFromLink', sh).oninput = () => {
+      const r = parseStoreLink($('#fFromLink', sh).value); if (!r) return;
+      const fill = (sel, v) => { const el = $(sel, sh); if (v && !el.value.trim()) el.value = v; };
+      $('#fLink', sh).value = r.link; fill('#fStore', r.store); fill('#fBrand', r.brand); fill('#fName', r.name);
+      r.colours.forEach(c => cols.add(c));
+      if (r.typeId && !typeTouched) { setType(r.typeId); it.typeId = r.typeId; typeTouched = true; }
+      sugg(); toast('Filled in from the link. Check it and add a photo.');
+    };
     wireLocSelect($('#fLoc', sh));
     $('#edFile', sh).onchange = async e => {
       const f = e.target.files[0]; if (!f) return;

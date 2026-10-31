@@ -50,6 +50,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
   - Type is guessed from words in the name.
   - Colours are found by sampling the photo, with the edge colour treated as background.
   - Typing a name suggests matches from imported purchases.
+  - Pasting a product link ("Store link" at the top of the editor) fills empty fields from the URL alone via `parseStoreLink`: store from the domain, name from the slug, trailing colour words as colours, brand if it matches one in the closet (or the first word on shoe stores like Zappos), and Shoes as the type on shoe stores. The app can't read store pages (browsers block cross-site reads), so no photo or price; an iOS Share-sheet Shortcut that fetches the page is the planned next step.
   - Brand, store, size and made in suggest values as you type (`suggestField`: tappable chips under the box, close spellings included, most used when empty). Colours, tags and materials are chip fields (`tagField`).
   - There's no online AI. That's deliberate, to keep the app offline.
 
