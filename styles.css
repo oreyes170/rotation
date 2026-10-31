@@ -180,3 +180,30 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
 .fit{font-size:11px;font-weight:600;color:var(--muted)}
 .nowear{font-size:11px;color:var(--muted);font-style:italic}
 .fit.f-good{color:var(--ok)} .fit.f-snug,.fit.f-loose{color:var(--warn)} .fit.f-too-tight,.fit.f-too-loose{color:var(--danger)}
+
+/* ===== Chocolate theme (Setup → Look): brown box, warm white type, magenta→orange band ===== */
+:root[data-theme="brown"]{
+  --bg:#3a241c; --surface:#4a3026; --surface2:#563a2e; --fg:#fbf5f0; --muted:#c7ad9f; --line:#654437;
+  --accent:#d63a5c; --accent-fg:#fff; --tag:#f08a4b; --ok:#8fd19e; --warn:#f2a65a; --danger:#ff7a7a;
+  --rest-bg:#6a2f3a; --ok-bg:#2f4a35; --band:linear-gradient(90deg,#c01f55,#c94f40 55%,#dd6324);
+  --shadow:0 1px 0 rgba(255,255,255,.04) inset,0 6px 18px rgba(0,0,0,.25); color-scheme:dark;
+}
+[data-theme="brown"] body{background:radial-gradient(120% 80% at 35% 15%,#4b3125 0%,#3c251d 45%,#2b1913 100%) fixed #3a241c}
+[data-theme="brown"] .top{background:rgba(43,25,19,.92);border-bottom:0;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+[data-theme="brown"] .top::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--band)}
+[data-theme="brown"] .top h1{font-weight:300;text-transform:lowercase;letter-spacing:.01em;font-size:24px}
+[data-theme="brown"] h2{color:var(--muted);font-weight:500;letter-spacing:.12em}
+[data-theme="brown"] .card,[data-theme="brown"] .item{background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,0)),var(--surface);border-color:var(--line)}
+[data-theme="brown"] button.primary{background:var(--band);border:0;font-weight:600;box-shadow:0 4px 14px rgba(192,31,85,.35)}
+[data-theme="brown"] button.ghost,[data-theme="brown"] button.icon{background:rgba(255,255,255,.04);border-color:var(--line)}
+[data-theme="brown"] .chip{background:rgba(255,255,255,.04);border-color:var(--line);color:var(--fg)}
+[data-theme="brown"] .chip.on{background:var(--band);border-color:transparent;color:#fff}
+[data-theme="brown"] .tabs{background:#2b1913;border-top:0}
+[data-theme="brown"] .tabs::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--band)}
+[data-theme="brown"] .tabs button.on{color:#f08a4b}
+[data-theme="brown"] .badge{background:#c01f55;color:#fff}
+[data-theme="brown"] .badge.near{background:#dd6324;color:#fff}
+[data-theme="brown"] .sync.done{color:#f08a4b;border-color:#6a4537}
+[data-theme="brown"] .cal-cell.today{outline:2px solid #dd6324}
+[data-theme="brown"] input,[data-theme="brown"] select,[data-theme="brown"] textarea,[data-theme="brown"] .tagbox{background:#2f1c15;border-color:var(--line)}
+[data-theme="brown"] input[type=checkbox]{accent-color:#dd6324}

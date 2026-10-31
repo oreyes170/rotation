@@ -10,7 +10,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - Plain HTML/CSS/JS with no build step or framework, and no dependencies except Google Identity Services, which is loaded only when Drive is connected.
   - `index.html`: the shell, plus a 4-tab bottom nav (Log, Closet, Calendar, Setup). Swiping left/right changes the day on Log and the month on Calendar.
   - `app.js`: all logic, in one file, organised by section comments.
-  - `styles.css`: tokens on `:root` with a dark theme via `prefers-color-scheme`. Phone-first, so check it at 400px wide.
+  - `styles.css`: tokens on `:root` with a dark theme via `prefers-color-scheme`, plus themes picked in Setup → Look (`settings.theme`: auto, light, dark, brown "Chocolate") applied as `data-theme` on `<html>`. The choice is mirrored in localStorage so `index.html` applies it before first paint. Phone-first, so check it at 400px wide.
   - `sw.js`: service worker that serves the app from cache first. **Bump `CACHE` (`rotation-vN`) on every release, and `VERSION` at the top of `app.js` to the same N** (it's shown in the header; tap it to check for updates). A new version installs with fresh files and reloads the app once it takes over.
   - `manifest.webmanifest` and the icons.
 - **Keep it a static app** that works offline. Don't add a server or a build step unless the owner asks.
@@ -26,7 +26,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
   - **`filters`:** `{id, name, typeIds[], tags[]}`. These are quick filters; every type also gets its own chip.
   - **`locations`:** `{id, name}`, defaulting to Home. The owner adds their own places on the device.
   - **`purchases`:** past purchases imported from CSV, used only for auto-fill suggestions.
-  - **`settings`:** `recentDays`, `cpwIncludesEstimate`, `clientId`, `driveFileId`, `autoBackup`, `lastChange`, `lastBackup`, `logLocation`, `tagLibrary` (extra tags to suggest, added in Setup), `schema` (data version; `load()` runs one-off upgrades when it's behind).
+  - **`settings`:** `recentDays`, `cpwIncludesEstimate`, `clientId`, `driveFileId`, `autoBackup`, `lastChange`, `lastBackup`, `logLocation`, `theme`, `tagLibrary` (extra tags to suggest, added in Setup), `schema` (data version; `load()` runs one-off upgrades when it's behind).
 - **Backup and import:** `snapshot()` / `applySnapshot()` handle JSON backups. A restore replaces everything except the Drive settings.
 
 ## Rules the owner asked for (don't change without asking)

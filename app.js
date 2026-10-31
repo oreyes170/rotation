@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 19; // shown in the header; bump with CACHE in sw.js
+const VERSION = 20; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -63,7 +63,7 @@ function defaults() {
     types, items: [], entries: [], days: {}, filters: [], purchases: [],
     locations: [{ id: uid(), name: 'Home' }],
     templates: [{ id: uid(), name: 'Daily', slots: [id('Short-sleeve tee'), id('Work shirt'), id('Cap'), id('Tie')] }],
-    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], schema: 3 }
+    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], theme: 'auto', schema: 3 }
   };
 }
 
@@ -952,6 +952,9 @@ function renderSettings() {
       <label class="check"><input type="checkbox" id="phReplace"> Replace photos items already have</label>
       <div class="row"><label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import photos<input type="file" accept="image/*,.json,application/json" id="phIn" multiple hidden></label><span class="muted small" id="phMsg"></span></div></section>
 
+    <h2>Look</h2>
+    <section class="card"><label class="field"><span>Theme</span><select id="sTheme">${[['auto', 'Match phone (light or dark)'], ['light', 'Light'], ['dark', 'Dark'], ['brown', 'Chocolate']].map(([v, l]) => `<option value="${v}" ${(st.theme || 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label></section>
+
     <h2>Counting</h2>
     <section class="card stack">
       <label class="field"><span>“Worn in the past X days” window</span><input type="number" min="1" id="sDays" value="${st.recentDays}"></label>
@@ -1037,6 +1040,7 @@ function renderSettings() {
   $$('[data-filter]', v).forEach(b => b.onclick = () => editFilter(S.filters.find(f => f.id === b.dataset.filter)));
   $('[data-a=addfilter]', v).onclick = () => editFilter(null);
   // counting
+  $('#sTheme', v).onchange = async e => { S.settings.theme = e.target.value; applyTheme(); await save(); };
   $('#sDays', v).onchange = async e => { S.settings.recentDays = Math.max(1, parseInt(e.target.value) || 30); await save(); };
   $('#sCpw', v).onchange = async e => { S.settings.cpwIncludesEstimate = e.target.checked; await save(); };
   // drive
@@ -1327,9 +1331,19 @@ function renderSync(label) {
   else { b.textContent = Drive.ok() ? 'Backup pending' : 'Not backed up'; b.classList.add('pending'); }
 }
 
+/* ---------- theme ---------- */
+const THEME_BAR = { brown: '#2b1913' };   // status bar colour for themes that need their own
+function applyTheme() {
+  const t = S.settings.theme || 'auto', root = document.documentElement;
+  if (t === 'auto') delete root.dataset.theme; else root.dataset.theme = t;
+  $('meta[name=theme-color]').content = THEME_BAR[t] || '#1f2a44';
+  try { localStorage.setItem('rotation-theme', t); } catch { }   // read by index.html before first paint
+}
+
 /* ---------- start ---------- */
 (async function start() {
   try { await load(); } catch (e) { view().innerHTML = `<div class="empty">This browser blocked local storage, so Rotation can’t save. (${esc(e.message || e)})</div>`; return; }
+  applyTheme();
   $$('.tabs button').forEach(b => b.onclick = () => go(b.dataset.tab));
   $('#sync').onclick = () => { if (S.settings.clientId) backupNow(true); else go('settings'); };
   window.addEventListener('online', () => { renderSync(); scheduleBackup(); });
