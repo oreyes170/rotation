@@ -217,3 +217,4 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
 .crop{position:relative;display:table;margin:8px auto 0;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:8px;overflow:hidden}
 .crop img{display:block;max-width:100%;max-height:65vh;width:auto;pointer-events:none}
 .crop-sel{position:absolute;border:2px solid var(--accent);background:rgba(255,255,255,.15);box-shadow:0 0 0 9999px rgba(0,0,0,.45)}
+.shottext{white-space:pre-wrap;font-size:12px;max-height:240px;overflow:auto;background:var(--surface2);padding:8px;border-radius:8px;margin:6px 0 0}

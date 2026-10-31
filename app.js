@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 23; // shown in the header; bump with CACHE in sw.js
+const VERSION = 24; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -256,7 +256,32 @@ const OCR = {
       const base = new URL('vendor/tesseract/', location.href).href;
       this.worker = await Tesseract.createWorker('eng', 1, { workerPath: base + 'worker.min.js', corePath: base, langPath: base, workerBlobURL: false, logger: m => onProgress && onProgress(m) });
     }
-    return (await this.worker.recognize(src)).data.text;
+    const { data } = await this.worker.recognize(src);
+    return this.recheckPrices(src, data);
+  },
+  // A small raised "$" can swallow the digit next to it ("$179.95" read as "$79.95"). Each price is read again
+  // close up, enlarged, digits only; the close-up wins only when it's the same price with digits added in front.
+  async recheckPrices(src, data) {
+    let text = data.text;
+    const found = (data.words || []).filter(w => /\d+[.,]\d{2}/.test(w.text)).slice(0, 8);
+    if (!found.length) return text;
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+    const crop = ({ x0, y0, x1, y1 }, scale) => {
+      const h = y1 - y0, L = Math.max(0, x0 - h * 1.2), T = Math.max(0, y0 - h * 0.4), W = Math.min(img.width - L, x1 - L + h * 0.4), H = Math.min(img.height - T, h * 1.8), k = scale * 48 / h;
+      const c = document.createElement('canvas'); c.width = Math.round(W * k) + 40; c.height = Math.round(H * k) + 40;
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.imageSmoothingQuality = 'high'; g.drawImage(img, L, T, W, H, 20, 20, W * k, H * k);
+      return c.toDataURL('image/png');
+    };
+    await this.worker.setParameters({ tessedit_char_whitelist: '$0123456789.,', tessedit_pageseg_mode: '7' });
+    try {
+      for (const w of found) {
+        const orig = w.text.replace(/[^\d.,]/g, ''), reads = [];
+        for (const scale of [2, 3]) reads.push((await this.worker.recognize(crop(w.bbox, scale))).data.text.replace(/[^\d.,]/g, ''));
+        const best = reads.filter(r => r.length > orig.length && r.endsWith(orig)).sort((a, b) => b.length - a.length)[0];
+        if (best) text = text.replace(w.text, '$' + best);
+      }
+    } finally { await this.worker.setParameters({ tessedit_char_whitelist: '', tessedit_pageseg_mode: '6' }); }
+    return text;
   }
 };
 const KNOWN_STORES = ['Zappos', 'Amazon', 'Uniqlo', 'J.Crew', 'Nike', 'Adidas', 'Target', 'Macy’s', 'Nordstrom', 'Old Navy', 'Gap', 'Everlane', 'Fanatics', 'HOMAGE', 'Etsy', 'eBay', 'H&M', 'Banana Republic', 'Walmart', 'Kohl’s', 'REI', 'ASOS'];
@@ -884,13 +909,14 @@ function openEditor(item, { typeId = null, onSave } = {}) {
     // screenshots: read the text on the device, fill empty fields, offer the rest as taps, and crop a photo from them
     const shotOut = $('#shotOut', sh), shotMsg = $('#shotMsg', sh);
     const fillIn = (sel, v) => { const el = $(sel, sh); if (v && !el.value.trim()) { el.value = v; return true; } };
-    const showShots = (r, shots) => {
+    const showShots = (r, shots, raw) => {
       const row = (label, html) => html ? `<div class="shotrow"><span class="muted small">${label}</span> ${html}</div>` : '';
       shotOut.innerHTML = `<div class="shotbox">
         ${row(r.names.some(n => n.price) ? 'Item (tap to fill its details):' : 'Name:', r.names.map((n, i) => `<button class="tag" data-sn="${i}" type="button">${esc(n.name)}${n.price ? ' · $' + esc(n.price) : ''}</button>`).join(''))}
         ${row('Price:', r.prices.map(p => `<button class="tag" data-sp="${p}" type="button">$${esc(p)}</button>`).join(''))}
         ${row('Photo:', shots.map((u, i) => `<button class="shotthumb" data-crop="${i}" type="button"><img src="${u}" alt="Screenshot ${i + 1}"></button>`).join('') + '<span class="muted small"> tap one to crop</span>')}
-        <div id="cropper"></div></div>`;
+        <div id="cropper"></div>
+        <details class="small"><summary class="muted">Show what it read</summary><pre class="shottext">${esc(raw)}</pre></details></div>`;
       $$('[data-sn]', shotOut).forEach(b => b.onclick = () => useItem(r.names[b.dataset.sn], true));
       $$('[data-sp]', shotOut).forEach(b => b.onclick = () => { $('#fPrice', sh).value = b.dataset.sp; toast('Price set to $' + b.dataset.sp); });
       $$('[data-crop]', shotOut).forEach(b => b.onclick = () => openCropper(shots[b.dataset.crop]));
@@ -938,7 +964,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
         if (!cols.count() && r.colours.length) r.colours.forEach(c => cols.add(c));
         const filled = [nameIn.value !== before.name && 'name', fillIn('#fBrand', r.brand) && 'brand', fillIn('#fStore', r.store) && 'store', sizeIn.value !== before.size && 'size',
           $('#fPrice', sh).value !== before.price && 'price', fillIn('#fDate', r.date) && 'date', cols.count() !== before.colours && 'colours', typeSel.value !== before.type && 'type'].filter(Boolean);
-        sugg(); showShots(r, shots);
+        sugg(); showShots(r, shots, texts.join('\n— next screenshot —\n'));
         shotMsg.textContent = filled.length ? `Filled in ${filled.join(', ')}. Tap below to change or add more.` : 'Couldn’t pick out details for sure. Tap what fits below.';
       } catch (err) { shotMsg.textContent = err.message || 'Couldn’t read that screenshot'; }
     };
