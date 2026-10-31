@@ -255,7 +255,10 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
   --accent:#161816; --accent-fg:#d3d9c9; --tag:#161816; --ok:#161816; --warn:#161816; --danger:#161816;
   --rest-bg:#161816; --ok-bg:#bfc7b4; --radius:4px; --shadow:none; color-scheme:light;
 }
-[data-theme="ipod"] body{background:var(--lcd);font-family:"Chicago","ChicagoFLF","Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;font-weight:500}
+@font-face{font-family:"Pixelify Sans";src:url("vendor/fonts/pixelify-sans.woff2") format("woff2");font-weight:400 700;font-display:swap}
+[data-theme="ipod"] body,[data-theme="ipod"] button,[data-theme="ipod"] input,[data-theme="ipod"] select,[data-theme="ipod"] textarea{font-family:"Pixelify Sans","Chicago","Helvetica Neue",Helvetica,Arial,system-ui,sans-serif}
+[data-theme="ipod"] body{background:var(--lcd);font-weight:500;-webkit-font-smoothing:antialiased}
+[data-theme="ipod"] *{font-variant-ligatures:none;font-feature-settings:"liga" 0,"clig" 0}   /* the font's "fi" ligature draws as "A" */
 [data-theme="ipod"] .top{background:var(--lcd);border-bottom:2px solid var(--ink);justify-content:center}
 [data-theme="ipod"] .top h1{font-size:18px;font-weight:800;letter-spacing:.01em;color:var(--ink);flex:1;text-align:center}
 [data-theme="ipod"] .top h1::before{content:"";position:absolute;left:max(16px,env(safe-area-inset-left,0px));top:calc(50% + env(safe-area-inset-top,0px)/2 - 6px);
