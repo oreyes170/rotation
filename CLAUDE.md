@@ -7,11 +7,12 @@ Rotation is a personal wardrobe and wear tracker, built because the existing war
 Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, root folder). The owner uses it on a phone (installed to the home screen) and on a computer.
 
 ## Stack and files
-- Plain HTML/CSS/JS with no build step or framework, and no dependencies except Google Identity Services, which is loaded only when Drive is connected.
+- Plain HTML/CSS/JS with no build step or framework. Dependencies: Google Identity Services (loaded only when Drive is connected) and tesseract.js for reading screenshots, which the owner approved. It's vendored in `vendor/tesseract/` (about 7 MB downloaded on first use: script, worker, the SIMD or plain LSTM core, English `best_int` model), loaded only when "Read screenshots" is used.
   - `index.html`: the shell, plus a 4-tab bottom nav (Log, Closet, Calendar, Setup). Swiping left/right changes the day on Log and the month on Calendar.
   - `app.js`: all logic, in one file, organised by section comments.
   - `styles.css`: tokens on `:root` with a dark theme via `prefers-color-scheme`, plus themes picked in Setup → Look (`settings.theme`: auto, light, dark, brown "Chocolate") applied as `data-theme` on `<html>`. The choice is mirrored in localStorage so `index.html` applies it before first paint. Phone-first, so check it at 400px wide.
   - `sw.js`: service worker that serves the app from cache first. **Bump `CACHE` (`rotation-vN`) on every release, and `VERSION` at the top of `app.js` to the same N** (it's shown in the header; tap it to check for updates). A new version installs with fresh files and reloads the app once it takes over.
+  - `sw.js` keeps `vendor/` files in a separate cache (`rotation-vendor-N`) that survives app updates, so the reader is downloaded once; bump N only when those files change.
   - `manifest.webmanifest` and the icons.
 - **Keep it a static app** that works offline. Don't add a server or a build step unless the owner asks.
 
@@ -52,6 +53,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
   - Typing a name suggests matches from imported purchases.
   - Pasting a product link ("Store link" at the top of the editor) fills empty fields from the URL alone via `parseStoreLink`: store from the domain, name from the slug, trailing colour words as colours, brand if it matches one in the closet (or the first word on shoe stores like Zappos), and Shoes as the type on shoe stores. The app can't read store pages (browsers block cross-site reads), so no photo or price; an iOS Share-sheet Shortcut that fetches the page is the planned next step.
   - Brand, store, size and made in suggest values as you type (`suggestField`: tappable chips under the box, close spellings included, most used when empty). Colours, tags and materials are chip fields (`tagField`).
+  - **Read screenshots** (editor): pick one or more screenshots of a store page or receipt (several for a long page; they're read in order as one text). Text is read on the device (`OCR`), then `parseShotText` pulls out prices, size, colours ("Color: …", colour codes like "09 Black" handled), order date, store and brand (matched against known ones), and name ideas. A receipt line "Name $19.90" keeps its price and the size/colour on the next lines, so tapping that item fills all of them. Only empty or default fields are filled automatically; taps replace. Any screenshot can be cropped into the item photo.
   - There's no online AI. That's deliberate, to keep the app offline.
 
 ## Google Drive backup

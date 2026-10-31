@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 21; // shown in the header; bump with CACHE in sw.js
+const VERSION = 22; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -246,6 +246,53 @@ function parseStoreLink(text) {
   const name = words.map(title).join(' ');
   return { link: m[0], store, brand, name, colours, typeId: guessType(name) || (SHOE_STORES.includes(site) ? guessType('shoes') : null) };
 }
+/* Reading screenshots (store pages, receipts) on the device with tesseract.js from vendor/tesseract.
+   Loaded on first use (~7 MB once), then cached by the service worker for offline use. */
+const OCR = {
+  worker: null,
+  async read(src, onProgress) {
+    if (!this.worker) {
+      if (!window.Tesseract) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/tesseract/tesseract.min.js'; s.onload = res; s.onerror = () => rej(new Error('Couldn’t load the screenshot reader. The first time, you need to be online.')); document.head.appendChild(s); });
+      const base = new URL('vendor/tesseract/', location.href).href;
+      this.worker = await Tesseract.createWorker('eng', 1, { workerPath: base + 'worker.min.js', corePath: base, langPath: base, workerBlobURL: false, logger: m => onProgress && onProgress(m) });
+    }
+    return (await this.worker.recognize(src)).data.text;
+  }
+};
+const KNOWN_STORES = ['Zappos', 'Amazon', 'Uniqlo', 'J.Crew', 'Nike', 'Adidas', 'Target', 'Macy’s', 'Nordstrom', 'Old Navy', 'Gap', 'Everlane', 'Fanatics', 'HOMAGE', 'Etsy', 'eBay', 'H&M', 'Banana Republic', 'Walmart', 'Kohl’s', 'REI', 'ASOS'];
+const SHOT_NOISE = /\$|%|https?:|www\.|\b(size|colou?r|qty|quantity|add to|bag|cart|checkout|ship|shipping|deliver|free|return|review|rating|stars?|sold|order|total|subtotal|tax|menu|search|sign in|account|details|description|select|pickup|width|wishlist|favorite|share|similar|you may|recommended|sale|off|save|payment|card|visa|address|track|item #|sku|style)\b/i;
+const esc_re = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function parseShotText(text) {
+  const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean), low = ' ' + text.toLowerCase().replace(/\s+/g, ' ') + ' ';
+  const has = name => name.length >= 3 && new RegExp('(^|[^a-z0-9])' + esc_re(name.toLowerCase()) + '([^a-z0-9]|$)').test(low);
+  const priceIn = l => (l.match(/\$\s?(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*$/) || [])[1]?.replace(/,/g, '') || '';
+  const sizeIn = l => { const m = l.match(/\bsize\b\s*[:\-]?\s*(.+)/i); if (!m) return ''; const v = m[1].split(/\s[|·•-]\s|,|\s{2,}|\bcolou?r\b|\bqty\b|\bwidth\b/i)[0].trim();
+    return /^(one size|[2-5]?x{0,3}[sml]|\d?xl|\d{1,2}(\.5)?|\d{2}\s?x\s?\d{2})$/i.test(v) ? cleanSize(/one size/i.test(v) ? 'One size' : v.toUpperCase()) : ''; };
+  const coloursIn = l => { const m = l.match(/\bcolou?r\b\s*[:\-]?\s*(?:\d+\s+)?([a-z][a-z \/&-]{2,40})/i); if (!m) return [];
+    return [...new Set(m[1].split(/\/|&|,|\band\b|\s-\s|\s\|/i).map(c => c.trim().toLowerCase()).filter(c => c && c.length < 20 && !/size|qty|width/.test(c)))].slice(0, 3); };
+  const prices = [...new Set([...text.matchAll(/\$\s?(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/g)].map(m => m[1].replace(/,/g, '')))].filter(p => +p > 0).slice(0, 6);
+  const size = lines.map(sizeIn).find(Boolean) || '', colours = lines.map(coloursIn).find(c => c.length) || [];
+  let date = '';
+  const dm = text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\b/i) || text.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/);
+  if (dm) { const d = /\d/.test(dm[1]) ? new Date(+(dm[3].length === 2 ? '20' + dm[3] : dm[3]), dm[1] - 1, +dm[2]) : new Date(`${dm[1]} ${dm[2]} ${dm[3]}`); if (!isNaN(d)) date = fmt(d); }
+  const stores = [...distinct('store'), ...S.purchases.map(p => p.retailer.replace(/\s*\(.*\)\s*$/, '')), ...KNOWN_STORES];
+  const store = stores.filter(has).sort((a, b) => b.length - a.length)[0] || '';
+  const brand = distinct('brand').filter(has).sort((a, b) => b.length - a.length)[0] || '';
+  // name ideas: short, wordy lines that aren't page furniture. A receipt line "Name $19.90" keeps its price, and the
+  // size and colour on the next lines, so picking one receipt item fills all of them.
+  const names = [];
+  lines.forEach((l, i) => {
+    const price = priceIn(l), t = l.replace(/\s*\$\s?[\d,.]+\s*$/, '').trim(), words = t.split(' ').length;
+    if (t.length < 6 || t.length > 70 || words < 2 || words > 10 || SHOT_NOISE.test(t) || (t.match(/[a-z]/gi) || []).length / t.length < 0.6) return;
+    const next = lines.slice(i + 1, i + 3).filter(n => !priceIn(n) || /\bsize\b|\bcolou?r\b/i.test(n));
+    names.push({ name: t, price, size: next.map(sizeIn).find(Boolean) || '', colours: next.map(coloursIn).find(c => c.length) || [],
+      score: (brand && t.toLowerCase().includes(brand.toLowerCase()) ? 4 : 0) + (guessType(t) ? 3 : 0) + (price ? 2 : 0) + (/^[A-Z0-9]/.test(t) ? 1 : 0) - i * 0.01 });
+  });
+  names.sort((a, b) => b.score - a.score);
+  const top = names.filter((n, i) => names.findIndex(m => m.name === n.name) === i).slice(0, 6);
+  const sure = top.length && (brand || guessType(top[0].name)) ? top[0] : null;
+  return { prices, size, colours, date, store, brand, names: top, sure, typeId: (sure && guessType(sure.name)) || guessType(text) };
+}
 function guessType(text) {
   for (const [re, words] of TYPE_WORDS) if (re.test(text)) for (const word of words.split('|')) { const t = S.types.find(x => x.name.toLowerCase() === word || x.name.toLowerCase().replace(/s$/, '') === word); if (t) return t.id; }
   return null;
@@ -334,7 +381,7 @@ function tagField(box, initial, { field = 'tags', extra = S.settings.tagLibrary 
   };
   draw();
   const get = () => { push(inp.value); inp.value = ''; return [...tags]; };
-  get.add = t => { push(t); draw(); }; get.count = () => tags.length;
+  get.add = t => { push(t); draw(); }; get.count = () => tags.length; get.clear = () => { tags.length = 0; draw(); };
   return get;
 }
 /* single-value field (brand, store, size, made in): tappable suggestions under it as you type,
@@ -394,6 +441,20 @@ function twoStep(btn, label, fn) {
 }
 
 /* ---------- photos ---------- */
+/* crop part of an image (rect in 0–1 fractions of its width/height) and scale it to an item photo */
+function cropImage(src, rect = { x: 0, y: 0, w: 1, h: 1 }, max = 720) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const sx = rect.x * img.width, sy = rect.y * img.height, sw = rect.w * img.width, sh = rect.h * img.height, s = Math.min(1, max / Math.max(sw, sh));
+      const c = document.createElement('canvas'); c.width = Math.round(sw * s); c.height = Math.round(sh * s);
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+      res(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => rej(new Error('Could not read that image'));
+    img.src = src;
+  });
+}
 function readImage(file, max = 720) {
   return new Promise((res, rej) => {
     const img = new Image(), url = URL.createObjectURL(file);
@@ -721,6 +782,8 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;text-align:center;background:var(--surface)">${photo ? 'Change photo' : 'Add photo'}<input type="file" accept="image/*" id="edFile" hidden></label>
       <button class="ghost" data-a="nophoto" type="button" ${photo ? '' : 'hidden'}>Remove photo</button></div></div>
     <div class="fields" style="margin-top:12px">
+      <div class="full row"><label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Read screenshots<input type="file" accept="image/*" id="fShots" multiple hidden></label><span class="muted small grow" id="shotMsg">A store page or receipt. Pick several for a long page.</span></div>
+      <div class="full" id="shotOut"></div>
       <label class="field full"><span>Store link (optional)</span><input id="fFromLink" type="url" inputmode="url" autocomplete="off" placeholder="Paste a product page link to fill in what it can"></label>
       <label class="field full"><span>Name</span><input id="fName" value="${esc(it.name)}" placeholder="e.g. Navy dot oxford" autocomplete="off"></label>
       <div class="full" id="edSugg"></div>
@@ -794,14 +857,76 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       sugg(); toast('Filled in from the link. Check it and add a photo.');
     };
     wireLocSelect($('#fLoc', sh));
+    const setPhoto = async url => {
+      photo = url; $('#edPhoto', sh).innerHTML = photoThumb(photo); $('[data-a=nophoto]', sh).hidden = false;
+      const found = await detectColours(photo);
+      if (found.length && !cols.count()) found.forEach(c => cols.add(c));
+      showColours(found, found.length ? 'Colours spotted in the photo:' : '');
+    };
     $('#edFile', sh).onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
+      try { await setPhoto(await readImage(f)); } catch (err) { toast(err.message); }
+    };
+    // screenshots: read the text on the device, fill empty fields, offer the rest as taps, and crop a photo from them
+    const shotOut = $('#shotOut', sh), shotMsg = $('#shotMsg', sh);
+    const fillIn = (sel, v) => { const el = $(sel, sh); if (v && !el.value.trim()) { el.value = v; return true; } };
+    const showShots = (r, shots) => {
+      const row = (label, html) => html ? `<div class="shotrow"><span class="muted small">${label}</span> ${html}</div>` : '';
+      shotOut.innerHTML = `<div class="shotbox">
+        ${row(r.names.some(n => n.price) ? 'Item (tap to fill its details):' : 'Name:', r.names.map((n, i) => `<button class="tag" data-sn="${i}" type="button">${esc(n.name)}${n.price ? ' · $' + esc(n.price) : ''}</button>`).join(''))}
+        ${row('Price:', r.prices.map(p => `<button class="tag" data-sp="${p}" type="button">$${esc(p)}</button>`).join(''))}
+        ${row('Photo:', shots.map((u, i) => `<button class="shotthumb" data-crop="${i}" type="button"><img src="${u}" alt="Screenshot ${i + 1}"></button>`).join('') + '<span class="muted small"> tap one to crop</span>')}
+        <div id="cropper"></div></div>`;
+      $$('[data-sn]', shotOut).forEach(b => b.onclick = () => useItem(r.names[b.dataset.sn], true));
+      $$('[data-sp]', shotOut).forEach(b => b.onclick = () => { $('#fPrice', sh).value = b.dataset.sp; toast('Price set to $' + b.dataset.sp); });
+      $$('[data-crop]', shotOut).forEach(b => b.onclick = () => openCropper(shots[b.dataset.crop]));
+    };
+    const openCropper = src => {
+      const box = $('#cropper', shotOut); let sel = null, start = null;
+      box.innerHTML = `<div class="crop"><img src="${src}" alt="" draggable="false"><div class="crop-sel" hidden></div></div>
+        <p class="help">Drag a box around the item.</p>
+        <div class="row end"><button class="ghost" data-c="whole" type="button">Use whole screenshot</button><button class="primary" data-c="use" type="button" disabled>Use this part</button></div>`;
+      const area = $('.crop', box), selEl = $('.crop-sel', box);
+      const at = e => { const r = area.getBoundingClientRect(); return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; };
+      const draw = () => Object.assign(selEl.style, { left: sel.x * 100 + '%', top: sel.y * 100 + '%', width: sel.w * 100 + '%', height: sel.h * 100 + '%' });
+      area.onpointerdown = e => { start = at(e); area.setPointerCapture(e.pointerId); e.preventDefault(); };
+      area.onpointermove = e => { if (!start) return; const p = at(e); sel = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) }; selEl.hidden = false; draw(); };
+      area.onpointerup = () => { start = null; $('[data-c=use]', box).disabled = !(sel && sel.w > 0.03 && sel.h > 0.03); };
+      $('[data-c=use]', box).onclick = async () => { await setPhoto(await cropImage(src, sel)); box.innerHTML = ''; toast('Photo set'); };
+      $('[data-c=whole]', box).onclick = async () => { await setPhoto(await cropImage(src)); box.innerHTML = ''; toast('Photo set'); };
+      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+    // fill from one recognised item; `force` (a tap) replaces what's there, otherwise only empty or default fields change
+    const useItem = (n, force) => {
+      const set = (sel, v) => { const el = $(sel, sh); if (v && (force || !el.value.trim())) el.value = v; };
+      set('#fName', n.name); set('#fPrice', n.price);
+      if (!typeTouched) { const t = guessType(n.name); if (t) { setType(t); it.typeId = t; } }
+      if (n.size && (force || !sizeIn.value.trim() || sizeIn.value === sizeFor(typeSel.value))) sizeIn.value = n.size;
+      if (n.colours.length && (force || !cols.count())) { if (force) cols.clear(); n.colours.forEach(c => cols.add(c)); }
+      sugg();
+    };
+    $('#fShots', sh).onchange = async e => {
+      const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
+      const shots = [], texts = [];
       try {
-        photo = await readImage(f); $('#edPhoto', sh).innerHTML = photoThumb(photo); $('[data-a=nophoto]', sh).hidden = false;
-        const found = await detectColours(photo);
-        if (found.length && !cols.count()) found.forEach(c => cols.add(c));
-        showColours(found, found.length ? 'Colours spotted in the photo:' : '');
-      } catch (err) { toast(err.message); }
+        for (let i = 0; i < files.length; i++) {
+          const n = files.length > 1 ? ` ${i + 1} of ${files.length}` : '';
+          shotMsg.textContent = `Reading screenshot${n}…`;
+          shots.push(await readImage(files[i], 2000));
+          texts.push(await OCR.read(shots[i], m => { if (m.status === 'recognizing text') shotMsg.textContent = `Reading screenshot${n}… ${Math.round(m.progress * 100)}%`; else if (/load/.test(m.status)) shotMsg.textContent = 'Getting the screenshot reader ready (the first time downloads about 7 MB)…'; }));
+        }
+        const r = parseShotText(texts.join('\n'));
+        const before = { name: nameIn.value, size: sizeIn.value, price: $('#fPrice', sh).value, colours: cols.count(), type: typeSel.value };
+        if (r.typeId && !typeTouched) { setType(r.typeId); it.typeId = r.typeId; }
+        useItem(r.sure || { name: '', price: r.prices[0], size: r.size, colours: r.colours });
+        if (!$('#fPrice', sh).value) fillIn('#fPrice', r.prices[0]);
+        if (sizeIn.value === sizeFor(typeSel.value) || !sizeIn.value) { if (r.size) sizeIn.value = r.size; }
+        if (!cols.count() && r.colours.length) r.colours.forEach(c => cols.add(c));
+        const filled = [nameIn.value !== before.name && 'name', fillIn('#fBrand', r.brand) && 'brand', fillIn('#fStore', r.store) && 'store', sizeIn.value !== before.size && 'size',
+          $('#fPrice', sh).value !== before.price && 'price', fillIn('#fDate', r.date) && 'date', cols.count() !== before.colours && 'colours', typeSel.value !== before.type && 'type'].filter(Boolean);
+        sugg(); showShots(r, shots);
+        shotMsg.textContent = filled.length ? `Filled in ${filled.join(', ')}. Tap below to change or add more.` : 'Couldn’t pick out details for sure. Tap what fits below.';
+      } catch (err) { shotMsg.textContent = err.message || 'Couldn’t read that screenshot'; }
     };
     $('[data-a=nophoto]', sh).onclick = e => { photo = null; $('#edPhoto', sh).innerHTML = photoThumb(null); e.target.hidden = true; };
     const getTags = tagField($('#fTags', sh), it.tags || []);

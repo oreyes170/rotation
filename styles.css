@@ -207,3 +207,13 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
 [data-theme="brown"] .cal-cell.today{outline:2px solid #dd6324}
 [data-theme="brown"] input,[data-theme="brown"] select,[data-theme="brown"] textarea,[data-theme="brown"] .tagbox{background:#2f1c15;border-color:var(--line)}
 [data-theme="brown"] input[type=checkbox]{accent-color:#dd6324}
+
+/* reading screenshots in the item editor */
+.shotbox{display:flex;flex-direction:column;gap:6px;border:1px dashed var(--line);border-radius:10px;padding:10px}
+.shotrow{line-height:2}
+.shotthumb{border:1px solid var(--line);background:none;padding:0;width:52px;height:80px;border-radius:6px;overflow:hidden;vertical-align:top;margin-right:4px;cursor:pointer}
+.shotthumb img{width:100%;height:100%;object-fit:cover}
+/* the box shrinks to the screenshot, so drag positions map straight onto it */
+.crop{position:relative;display:table;margin:8px auto 0;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:8px;overflow:hidden}
+.crop img{display:block;max-width:100%;max-height:65vh;width:auto;pointer-events:none}
+.crop-sel{position:absolute;border:2px solid var(--accent);background:rgba(255,255,255,.15);box-shadow:0 0 0 9999px rgba(0,0,0,.45)}
