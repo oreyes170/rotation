@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 22; // shown in the header; bump with CACHE in sw.js
+const VERSION = 23; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -260,9 +260,11 @@ const OCR = {
   }
 };
 const KNOWN_STORES = ['Zappos', 'Amazon', 'Uniqlo', 'J.Crew', 'Nike', 'Adidas', 'Target', 'Macy’s', 'Nordstrom', 'Old Navy', 'Gap', 'Everlane', 'Fanatics', 'HOMAGE', 'Etsy', 'eBay', 'H&M', 'Banana Republic', 'Walmart', 'Kohl’s', 'REI', 'ASOS'];
-const SHOT_NOISE = /\$|%|https?:|www\.|\b(size|colou?r|qty|quantity|add to|bag|cart|checkout|ship|shipping|deliver|free|return|review|rating|stars?|sold|order|total|subtotal|tax|menu|search|sign in|account|details|description|select|pickup|width|wishlist|favorite|share|similar|you may|recommended|sale|off|save|payment|card|visa|address|track|item #|sku|style)\b/i;
+const SHOT_NOISE = /^(men|women|unisex|kids)['’]?s?$|\$|%|https?:|www\.|\b(size|colou?r|qty|quantity|add to|bag|cart|checkout|ship|shipping|deliver|free|return|review|rating|stars?|sold|order|total|subtotal|tax|menu|search|sign in|account|details|description|select|pickup|width|wishlist|favorite|share|similar|you may|recommended|sale|off|save|payment|card|visa|address|track|item #|sku|style)\b/i;
 const esc_re = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function parseShotText(text) {
+  // a small raised "$" right against the first digit is easy to misread: "1$79.95" / "$1 79.95" → "$179.95"
+  text = text.replace(/(^|[^\d.,$])(\d)\s?[$§]\s?(?=\d{2})/gm, '$1$$$2').replace(/\$\s?(\d)\s(\d{1,3}\.\d{2})\b/g, '$$$1$2');
   const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean), low = ' ' + text.toLowerCase().replace(/\s+/g, ' ') + ' ';
   const has = name => name.length >= 3 && new RegExp('(^|[^a-z0-9])' + esc_re(name.toLowerCase()) + '([^a-z0-9]|$)').test(low);
   const priceIn = l => (l.match(/\$\s?(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*$/) || [])[1]?.replace(/,/g, '') || '';
@@ -270,27 +272,39 @@ function parseShotText(text) {
     return /^(one size|[2-5]?x{0,3}[sml]|\d?xl|\d{1,2}(\.5)?|\d{2}\s?x\s?\d{2})$/i.test(v) ? cleanSize(/one size/i.test(v) ? 'One size' : v.toUpperCase()) : ''; };
   const coloursIn = l => { const m = l.match(/\bcolou?r\b\s*[:\-]?\s*(?:\d+\s+)?([a-z][a-z \/&-]{2,40})/i); if (!m) return [];
     return [...new Set(m[1].split(/\/|&|,|\band\b|\s-\s|\s\|/i).map(c => c.trim().toLowerCase()).filter(c => c && c.length < 20 && !/size|qty|width/.test(c)))].slice(0, 3); };
-  const prices = [...new Set([...text.matchAll(/\$\s?(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/g)].map(m => m[1].replace(/,/g, '')))].filter(p => +p > 0).slice(0, 6);
+  // prices: "$12.34" anywhere, or a line that is just a price whose "$" was misread or dropped ("S179.95", "179.95")
+  const prices = [...new Set(lines.flatMap(l => {
+    const own = l.match(/^[^\w]*[$§S]?\s?(\d{1,4}(?:,\d{3})*\.\d{2})\s*$/);
+    return own ? [own[1]] : [...l.matchAll(/\$\s?(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/g)].map(m => m[1]);
+  }).map(p => p.replace(/,/g, '')))].filter(p => +p > 0).slice(0, 6);
   const size = lines.map(sizeIn).find(Boolean) || '', colours = lines.map(coloursIn).find(c => c.length) || [];
   let date = '';
   const dm = text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\b/i) || text.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/);
   if (dm) { const d = /\d/.test(dm[1]) ? new Date(+(dm[3].length === 2 ? '20' + dm[3] : dm[3]), dm[1] - 1, +dm[2]) : new Date(`${dm[1]} ${dm[2]} ${dm[3]}`); if (!isNaN(d)) date = fmt(d); }
   const stores = [...distinct('store'), ...S.purchases.map(p => p.retailer.replace(/\s*\(.*\)\s*$/, '')), ...KNOWN_STORES];
   const store = stores.filter(has).sort((a, b) => b.length - a.length)[0] || '';
-  const brand = distinct('brand').filter(has).sort((a, b) => b.length - a.length)[0] || '';
+  let brand = distinct('brand').filter(has).sort((a, b) => b.length - a.length)[0] || '';
   // name ideas: short, wordy lines that aren't page furniture. A receipt line "Name $19.90" keeps its price, and the
   // size and colour on the next lines, so picking one receipt item fills all of them.
   const names = [];
   lines.forEach((l, i) => {
     const price = priceIn(l), t = l.replace(/\s*\$\s?[\d,.]+\s*$/, '').trim(), words = t.split(' ').length;
-    if (t.length < 6 || t.length > 70 || words < 2 || words > 10 || SHOT_NOISE.test(t) || (t.match(/[a-z]/gi) || []).length / t.length < 0.6) return;
+    if (t.length < 6 || t.length > 70 || (words < 2 && !/\d/.test(t)) || words > 10 || SHOT_NOISE.test(t) || (t.match(/[a-z]/gi) || []).length / t.length < 0.6) return;
     const next = lines.slice(i + 1, i + 3).filter(n => !priceIn(n) || /\bsize\b|\bcolou?r\b/i.test(n));
     names.push({ name: t, price, size: next.map(sizeIn).find(Boolean) || '', colours: next.map(coloursIn).find(c => c.length) || [],
       score: (brand && t.toLowerCase().includes(brand.toLowerCase()) ? 4 : 0) + (guessType(t) ? 3 : 0) + (price ? 2 : 0) + (/^[A-Z0-9]/.test(t) ? 1 : 0) - i * 0.01 });
   });
+  // product pages put the brand on its own short line just above the name ("HOKA" / "Gaviota 6")
+  if (!brand) lines.forEach((l, i) => {
+    const nx = lines[i + 1] || '';
+    if (!brand && /^[A-Za-z][A-Za-z&.'’ -]{1,24}$/.test(l) && l.split(' ').length <= 3 && l === l.toUpperCase() && /[A-Z]{2}/.test(l) && /[a-z]/.test(nx) && !SHOT_NOISE.test(l) && !/^(men|women|kids|sale|new)/i.test(l))
+      brand = l.length > 3 ? l[0] + l.slice(1).toLowerCase().replace(/([ &.-])([a-z])/g, (m, a, b) => a + b.toUpperCase()) : l;
+  });
+  if (brand) names.forEach(n => { if (n.name.toLowerCase().includes(brand.toLowerCase())) n.score += 4; });
   names.sort((a, b) => b.score - a.score);
-  const top = names.filter((n, i) => names.findIndex(m => m.name === n.name) === i).slice(0, 6);
-  const sure = top.length && (brand || guessType(top[0].name)) ? top[0] : null;
+  const top = names.filter((n, i) => names.findIndex(m => m.name === n.name) === i && n.name.toLowerCase() !== brand.toLowerCase()).slice(0, 6);
+  // a short product name gets the brand in front ("Gaviota 6" → "Hoka Gaviota 6")
+  const sure = top.length && (brand || guessType(top[0].name)) ? { ...top[0], name: brand && !top[0].name.toLowerCase().includes(brand.toLowerCase()) ? brand + ' ' + top[0].name : top[0].name } : null;
   return { prices, size, colours, date, store, brand, names: top, sure, typeId: (sure && guessType(sure.name)) || guessType(text) };
 }
 function guessType(text) {
