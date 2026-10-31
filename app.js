@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 31; // shown in the header; bump with CACHE in sw.js
+const VERSION = 32; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1155,7 +1155,7 @@ function renderSettings() {
       <div class="row"><label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import photos<input type="file" accept="image/*,.json,application/json" id="phIn" multiple hidden></label><span class="muted small" id="phMsg"></span></div></section>
 
     <h2>Look</h2>
-    <section class="card"><label class="field"><span>Theme</span><select id="sTheme">${[['auto', 'Match phone (light or dark)'], ['light', 'Light'], ['dark', 'Dark'], ['brown', 'Chocolate'], ['ipod', 'Click Wheel'], ['aqua', 'Aqua'], ['luna', 'Luna'], ['blades', 'Blades'], ['aero', 'Aero']].map(([v, l]) => `<option value="${v}" ${(st.theme || 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <section class="card"><label class="field"><span>Theme</span><select id="sTheme">${[['auto', 'Match phone (light or dark)'], ['light', 'Light'], ['dark', 'Dark'], ['brown', 'Chocolate'], ['ipod', 'Click Wheel'], ['aqua', 'Aqua'], ['luna', 'Luna'], ['blades', 'Blades'], ['aero', 'Aero'], ['w98', 'Retro 98']].map(([v, l]) => `<option value="${v}" ${(st.theme || 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="check" style="margin-top:12px"><input type="checkbox" id="sGlass" ${st.glass !== false ? 'checked' : ''}> Glass tab bar (floating, see-through)</label></section>
 
     <h2>Counting</h2>
@@ -1439,7 +1439,7 @@ const Drive = {
   async signIn(after = 'connect') {
     if (!S.settings.clientId) throw new Error('Add your Google client ID in Setup first');
     if (this.redirectMode()) {
-      const state = uid(); try { localStorage.setItem('rotation-oauth', JSON.stringify({ state, after })); } catch { }
+      const state = uid(); try { localStorage.setItem('rotation-oauth', JSON.stringify({ state, after, tab })); } catch { }
       location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({ client_id: S.settings.clientId, redirect_uri: this.redirectUri(),
         response_type: 'token', scope: 'https://www.googleapis.com/auth/drive.file', state, include_granted_scopes: 'true' });
       return new Promise(() => { });
@@ -1461,7 +1461,7 @@ const Drive = {
     if (h.has('error')) { toast('Google sign-in: ' + h.get('error')); return null; }
     if (!saved.state || h.get('state') !== saved.state) return null;
     this.token = h.get('access_token'); this.exp = Date.now() + (Number(h.get('expires_in') || 3600) - 60) * 1000;
-    return saved.after || 'connect';
+    return { after: saved.after || 'connect', tab: saved.tab };
   },
   async api(url, opt = {}) {
     const r = await fetch(url, { ...opt, headers: { ...(opt.headers || {}), Authorization: 'Bearer ' + this.token } });
@@ -1536,7 +1536,7 @@ function renderSync(label) {
 }
 
 /* ---------- theme ---------- */
-const THEME_BAR = { brown: '#2b1913', ipod: '#c9d0bf', aqua: '#d6d6d6', luna: '#0a50d6', blades: '#5aa31f', aero: '#0f1d29' };   // status bar colour for themes that need their own
+const THEME_BAR = { brown: '#2b1913', ipod: '#c9d0bf', aqua: '#d6d6d6', luna: '#0a50d6', blades: '#5aa31f', aero: '#0f1d29', w98: '#008080' };   // status bar colour for themes that need their own
 function applyTheme() {
   const t = S.settings.theme || 'auto', root = document.documentElement;
   if (t === 'auto') delete root.dataset.theme; else root.dataset.theme = t;
@@ -1556,8 +1556,9 @@ function applyTheme() {
   window.addEventListener('offline', () => renderSync());
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal').hidden) closeModal(); });
   renderSync(); go(S.items.length ? 'log' : 'closet');
-  const after = Drive.fromRedirect();
-  if (after) { go('settings'); renderSync(); if (after === 'backup') backupNow(true); else if (after === 'restore') restoreFromDrive(); else { toast('Connected to Google Drive'); scheduleBackup(); } }
+  const back = Drive.fromRedirect(), after = back?.after;
+  // back from Google: return to the screen the sign-in started from, then finish what it was for
+  if (after) { go(back.tab || 'settings'); renderSync(); if (after === 'backup') backupNow(true); else if (after === 'restore') restoreFromDrive(); else { toast('Connected to Google Drive'); scheduleBackup(); } }
   $('#title').insertAdjacentHTML('beforeend', ` <button class="ver" id="ver" type="button" title="Check for updates">v${VERSION}</button>`);
   $('#ver').onclick = async () => { toast('Version ' + VERSION + ' · checking for updates…'); try { await (await navigator.serviceWorker?.getRegistration())?.update(); } catch { } };
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
