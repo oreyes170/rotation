@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 40; // shown in the header; bump with CACHE in sw.js
+const VERSION = 41; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1582,18 +1582,9 @@ function applyTheme() {
 (async function start() {
   try { await load(); } catch (e) { view().innerHTML = `<div class="empty">This browser blocked local storage, so Rotation can’t save. (${esc(e.message || e)})</div>`; return; }
   applyTheme();
-  // iOS doesn't shrink the page for the keyboard, so sheets would sit behind it. Size the sheet area to what's
-  // actually visible (the visual viewport) so the top of a sheet, e.g. picker results, stays above the keyboard.
-  if (window.visualViewport) {
-    const vv = visualViewport, fit = () => {
-      if (scrollY || document.documentElement.scrollTop) scrollTo(0, 0);   // the page never scrolls; undo any nudge from iOS
-      Object.assign($('#modal').style, { top: vv.offsetTop + 'px', height: vv.height + 'px', bottom: 'auto' });
-      // sheets get a plain pixel height limit: iOS didn't apply a percentage one, so long sheets grew past the screen and couldn't scroll
-      document.documentElement.style.setProperty('--vvh', Math.round(Math.min(vv.height, innerHeight)) + 'px');
-    };
-    vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
-    document.addEventListener('focusout', () => setTimeout(fit, 60));   // when the keyboard goes away
-  }
+  // The page never scrolls (main does). If iOS nudges it anyway when the keyboard opens, put it back when focus leaves.
+  // (Sizing sheets from window.visualViewport was tried and dropped: the iPhone home-screen app reported wrong sizes.)
+  document.addEventListener('focusout', () => setTimeout(() => { if (scrollY || document.documentElement.scrollTop) scrollTo(0, 0); }, 60));
   $$('.tabs button').forEach(b => b.onclick = () => go(b.dataset.tab));
   $('#sync').onclick = () => { if (S.settings.clientId) backupNow(true); else go('settings'); };
   window.addEventListener('online', () => { renderSync(); scheduleBackup(); });
