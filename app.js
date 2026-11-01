@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 36; // shown in the header; bump with CACHE in sw.js
+const VERSION = 37; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -528,7 +528,7 @@ const view = () => $('#view');
 function go(t) {
   tab = t; $$('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   ({ log: renderLog, closet: renderCloset, calendar: renderCalendar, settings: renderSettings })[t]();
-  window.scrollTo(0, 0);
+  view().scrollTo(0, 0);
 }
 function refresh() { go(tab); }
 
