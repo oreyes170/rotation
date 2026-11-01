@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 37; // shown in the header; bump with CACHE in sw.js
+const VERSION = 38; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -481,13 +481,14 @@ function itemCard(item, extra = '') {
 }
 
 /* ---------- modal ---------- */
-function openModal(html, mount) {
-  const m = $('#modal'); m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`; m.hidden = false;
+/* top: open the sheet from the top of the screen, for sheets you type into (the iPhone keyboard covers the bottom) */
+function openModal(html, mount, { top = false } = {}) {
+  const m = $('#modal'); m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`; m.hidden = false; m.classList.toggle('attop', top);
   m.onclick = e => { if (e.target === m) closeModal(); };
   const sheet = m.firstElementChild; $$('[data-x]', sheet).forEach(b => b.onclick = closeModal);
   mount && mount(sheet); return sheet;
 }
-function closeModal() { const m = $('#modal'); m.hidden = true; m.innerHTML = ''; }
+function closeModal() { const m = $('#modal'); m.hidden = true; m.innerHTML = ''; m.classList.remove('attop'); }
 const head = title => `<div class="sheet-head"><h2>${esc(title)}</h2><button class="icon" data-x type="button" aria-label="Close">✕</button></div>`;
 function twoStep(btn, label, fn) {
   btn.onclick = () => { if (btn.dataset.armed) return fn(); btn.dataset.armed = 1; const o = btn.textContent; btn.textContent = label; setTimeout(() => { delete btn.dataset.armed; btn.textContent = o; }, 3000); };
@@ -693,7 +694,7 @@ function pick({ typeId, title, current, date }, cb) {
     const none = $('[data-a=none]', sh); if (none) none.onclick = () => { closeModal(); cb(null); };
     $('[data-a=new]', sh).onclick = () => openEditor(null, { typeId: typeFilter, onSave: id => cb(id) });
     drawChips(); draw();
-  });
+  }, { top: true });
 }
 const matchQ = (i, q) => [i.name, i.brand, i.store, i.size, locName(i.location), typeName(i.typeId), ...(i.tags || []), ...(i.colors || []), ...(i.materials || []), i.madeIn].join(' ').toLowerCase().includes(q);
 
