@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 39; // shown in the header; bump with CACHE in sw.js
+const VERSION = 40; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1588,6 +1588,8 @@ function applyTheme() {
     const vv = visualViewport, fit = () => {
       if (scrollY || document.documentElement.scrollTop) scrollTo(0, 0);   // the page never scrolls; undo any nudge from iOS
       Object.assign($('#modal').style, { top: vv.offsetTop + 'px', height: vv.height + 'px', bottom: 'auto' });
+      // sheets get a plain pixel height limit: iOS didn't apply a percentage one, so long sheets grew past the screen and couldn't scroll
+      document.documentElement.style.setProperty('--vvh', Math.round(Math.min(vv.height, innerHeight)) + 'px');
     };
     vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
     document.addEventListener('focusout', () => setTimeout(fit, 60));   // when the keyboard goes away

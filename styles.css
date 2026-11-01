@@ -17,7 +17,7 @@
 html,body{margin:0}
 /* The page itself never scrolls; only <main> does. On iOS a scrolling page can shift where "fixed to the bottom"
    is, which floated the tab bar up the screen when scrolling back up. */
-html{height:100%;overflow:hidden;overscroll-behavior:none}
+html{height:100%;overflow:hidden}
 /* pinned so iOS can't nudge the whole page (it does when an input gets focus), which left sheets shifted and stuck */
 body{position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden}
 *{touch-action:manipulation} /* no double-tap zoom; pinch zoom still works */
@@ -37,7 +37,7 @@ h3{margin:0 0 6px;font-size:16px}
 .sync.pending{color:var(--warn);border-color:var(--warn)}
 .sync.done{color:var(--ok)}
 
-main{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;
+main{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
   padding:8px max(16px,env(safe-area-inset-right,0px),calc(50% - 534px)) calc(96px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px),calc(50% - 534px))}
 
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:grid;grid-template-columns:repeat(4,1fr);
@@ -165,7 +165,7 @@ input[type=date]::-webkit-date-and-time-value{text-align:inherit}
 #modal.attop{align-items:flex-start}
 #modal.attop .sheet{border-radius:0 0 16px 16px;padding-top:calc(12px + env(safe-area-inset-top,0px))}
 #modal[hidden]{display:none}
-.sheet{background:var(--bg);width:100%;max-width:640px;max-height:min(92vh,calc(100% - 12px));max-height:min(92dvh,calc(100% - 12px));overflow-y:auto;border-radius:16px 16px 0 0;
+.sheet{background:var(--bg);width:100%;max-width:640px;max-height:calc(var(--vvh,92vh) - 12px);overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:16px 16px 0 0;
   padding:16px max(16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 /* Save / Cancel / Delete stay pinned to the bottom of long sheets (item editor, quick filter) */
 .sheetbar{position:sticky;bottom:calc(-20px - env(safe-area-inset-bottom,0px));z-index:3;background:inherit;border-top:1px solid var(--line);
