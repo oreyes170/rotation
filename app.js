@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 38; // shown in the header; bump with CACHE in sw.js
+const VERSION = 39; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1585,8 +1585,12 @@ function applyTheme() {
   // iOS doesn't shrink the page for the keyboard, so sheets would sit behind it. Size the sheet area to what's
   // actually visible (the visual viewport) so the top of a sheet, e.g. picker results, stays above the keyboard.
   if (window.visualViewport) {
-    const vv = visualViewport, fit = () => Object.assign($('#modal').style, { top: vv.offsetTop + 'px', height: vv.height + 'px', bottom: 'auto' });
+    const vv = visualViewport, fit = () => {
+      if (scrollY || document.documentElement.scrollTop) scrollTo(0, 0);   // the page never scrolls; undo any nudge from iOS
+      Object.assign($('#modal').style, { top: vv.offsetTop + 'px', height: vv.height + 'px', bottom: 'auto' });
+    };
     vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
+    document.addEventListener('focusout', () => setTimeout(fit, 60));   // when the keyboard goes away
   }
   $$('.tabs button').forEach(b => b.onclick = () => go(b.dataset.tab));
   $('#sync').onclick = () => { if (S.settings.clientId) backupNow(true); else go('settings'); };
