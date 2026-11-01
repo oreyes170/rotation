@@ -159,6 +159,9 @@ input[type=date]::-webkit-date-and-time-value{text-align:inherit}
 #modal[hidden]{display:none}
 .sheet{background:var(--bg);width:100%;max-width:640px;max-height:min(92vh,calc(100% - 12px));overflow-y:auto;border-radius:16px 16px 0 0;
   padding:16px max(16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+/* Save / Cancel / Delete stay pinned to the bottom of long sheets (item editor, quick filter) */
+.sheetbar{position:sticky;bottom:calc(-20px - env(safe-area-inset-bottom,0px));z-index:3;background:inherit;border-top:1px solid var(--line);
+  margin:12px -16px calc(-20px - env(safe-area-inset-bottom,0px));padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
 @media (min-width:700px){#modal{align-items:center}.sheet{border-radius:16px;max-height:88vh}}
 .sheet-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;position:sticky;top:-16px;background:var(--bg);padding:6px 0;z-index:2}
 .sheet-head h2{margin:0;font-size:17px;text-transform:none;letter-spacing:0;color:var(--fg)}

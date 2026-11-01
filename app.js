@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 34; // shown in the header; bump with CACHE in sw.js
+const VERSION = 35; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -852,7 +852,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="check full"><input type="checkbox" id="fRet" ${it.retired ? 'checked' : ''}> Retired: gone for good (given away, worn out). Not the same as resting after a wear limit.</label>
     </div>
     <p class="help">Estimated wears count toward total wears${S.settings.cpwIncludesEstimate ? ' and cost per wear' : ''}. They never change your tracked history, recent-day counts or wear limits.</p>
-    <div class="row end">${isNew ? '' : '<button class="danger" data-a="del" type="button">Delete</button>'}<button class="ghost" data-x type="button">Cancel</button><button class="primary" data-a="save" type="button">Save</button></div>`, sh => {
+    <div class="row end sheetbar">${isNew ? '' : '<button class="danger" data-a="del" type="button">Delete</button>'}<button class="ghost" data-x type="button">Cancel</button><button class="primary" data-a="save" type="button">Save</button></div>`, sh => {
     $$('[data-x]', sh).forEach(b => b.onclick = closeModal);
     const typeSel = $('#fType', sh), sizeIn = $('#fSize', sh), nameIn = $('#fName', sh);
     const cols = tagField($('#fColors', sh), it.colors || [], { field: 'colors', extra: allColours(), noun: 'colour' });
@@ -1051,7 +1051,7 @@ function editFilter(f) {
     <label class="field"><span>Name</span><input id="flName" value="${esc(x.name)}" placeholder="e.g. Concert tees"></label>
     <h2>Types</h2><div class="chips" style="flex-wrap:wrap">${S.types.map(t => `<button class="chip ${x.typeIds.includes(t.id) ? 'on' : ''}" data-t="${t.id}" type="button">${esc(t.name)}</button>`).join('')}</div>
     <div class="field" style="margin-top:12px"><span>Tags (optional)</span><div id="flTags"></div></div>
-    <div class="row end">${isNew ? '' : '<button class="danger" data-a="del" type="button">Delete</button>'}<button class="primary" data-a="save" type="button">Save</button></div>`, sh => {
+    <div class="row end sheetbar">${isNew ? '' : '<button class="danger" data-a="del" type="button">Delete</button>'}<button class="primary" data-a="save" type="button">Save</button></div>`, sh => {
     $$('[data-t]', sh).forEach(b => b.onclick = () => { const i = x.typeIds.indexOf(b.dataset.t); i < 0 ? x.typeIds.push(b.dataset.t) : x.typeIds.splice(i, 1); b.classList.toggle('on'); });
     const getTags = tagField($('#flTags', sh), x.tags);
     $('[data-a=save]', sh).onclick = async () => {
