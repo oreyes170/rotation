@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 35; // shown in the header; bump with CACHE in sw.js
+const VERSION = 36; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -345,23 +345,37 @@ function nearestColour(r, g, b) {
   return best;
 }
 /* main colours in a photo, ignoring the background colour around the edges */
+/* main colours in a photo. The background is the shade around the edges (median of the border pixels); everything
+   connected to the border that's close to it (soft shadows and gradients too) is dropped before counting. If almost
+   nothing is left, the item is the background's colour (a white tee on white), so that colour is the answer. */
 function detectColours(dataUrl) {
   return new Promise(res => {
     const img = new Image();
     img.onload = () => {
-      const N = 48, c = document.createElement('canvas'); c.width = N; c.height = N;
+      const N = 64, c = document.createElement('canvas'); c.width = N; c.height = N;
       const g = c.getContext('2d'); g.drawImage(img, 0, 0, N, N);
-      const px = g.getImageData(0, 0, N, N).data, all = new Map(), edge = new Map();
-      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-        const i = (y * N + x) * 4; const n = nearestColour(px[i], px[i + 1], px[i + 2]);
-        all.set(n, (all.get(n) || 0) + 1);
-        if (x < 3 || y < 3 || x >= N - 3 || y >= N - 3) edge.set(n, (edge.get(n) || 0) + 1);
+      const px = g.getImageData(0, 0, N, N).data, at = (x, y) => (y * N + x) * 4;
+      const dist = (i, b) => Math.hypot(px[i] - b[0], px[i + 1] - b[1], px[i + 2] - b[2]);
+      const border = []; for (let k = 0; k < N; k++) border.push([k, 0], [k, N - 1], [0, k], [N - 1, k]);
+      const med = ch => { const v = border.map(([x, y]) => px[at(x, y) + ch]).sort((a, b) => a - b); return v[v.length >> 1]; };
+      const bg = [med(0), med(1), med(2)];
+      const isBg = new Uint8Array(N * N);
+      if (border.filter(([x, y]) => dist(at(x, y), bg) < 40).length / border.length > 0.5) {
+        // flood fill the background in from the border
+        const stack = border.filter(([x, y]) => dist(at(x, y), bg) < 50);
+        while (stack.length) {
+          const [x, y] = stack.pop(), k = y * N + x;
+          if (x < 0 || y < 0 || x >= N || y >= N || isBg[k] || dist(k * 4, bg) >= 50) continue;
+          isBg[k] = 1; stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+        }
       }
-      const edgeTotal = [...edge.values()].reduce((a, b) => a + b, 0);
-      const bg = [...edge].sort((a, b) => b[1] - a[1])[0];
-      if (bg && bg[1] / edgeTotal > 0.5) all.delete(bg[0]);
-      const total = [...all.values()].reduce((a, b) => a + b, 0) || 1;
-      res([...all].sort((a, b) => b[1] - a[1]).filter(([, v]) => v / total >= 0.15).slice(0, 3).map(([n]) => n));
+      const all = new Map(); let kept = 0;
+      for (let k = 0; k < N * N; k++) {
+        if (isBg[k] || (isBg.some(Boolean) && dist(k * 4, bg) < 22)) continue;   // also drop background showing through gaps
+        const n = nearestColour(px[k * 4], px[k * 4 + 1], px[k * 4 + 2]); all.set(n, (all.get(n) || 0) + 1); kept++;
+      }
+      if (kept < N * N * 0.06) return res([nearestColour(...bg)]);
+      res([...all].sort((a, b) => b[1] - a[1]).filter(([, v]) => v / kept >= 0.15).slice(0, 3).map(([n]) => n));
     };
     img.onerror = () => res([]);
     img.src = dataUrl;
@@ -1154,6 +1168,7 @@ function renderSettings() {
     <h2>Photos</h2>
     <section class="card stack"><p class="help" style="margin:0">Add photos to many items at once. Pick image files named after the item (like <code>Navy oxford.jpg</code>), or named with the ID at the end of the item’s link. A Rotation photo pack (<code>.json</code>) works too.</p>
       <label class="check"><input type="checkbox" id="phReplace"> Replace photos items already have</label>
+      <div class="row"><button class="ghost" data-a="dewhite" type="button">Remove background white</button><span class="muted small" id="dewhiteMsg">Takes “white” off items whose photo shows it’s only the background.</span></div>
       <div class="row"><label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import photos<input type="file" accept="image/*,.json,application/json" id="phIn" multiple hidden></label><span class="muted small" id="phMsg"></span></div></section>
 
     <h2>Look</h2>
@@ -1223,6 +1238,17 @@ function renderSettings() {
     try { const r = await importPhotos(files, $('#phReplace', v).checked); msg.textContent = `${r.added} added${r.kept ? `, ${r.kept} kept (item already had one)` : ''}${r.unmatched.length ? `, ${r.unmatched.length} not matched: ${r.unmatched.slice(0, 8).join(', ')}${r.unmatched.length > 8 ? '…' : ''}` : ''}`; }
     catch (err) { msg.textContent = err.message; }
     e.target.value = '';
+  };
+  $('[data-a=dewhite]', v).onclick = async () => {
+    const msg = $('#dewhiteMsg', v), list = S.items.filter(i => i.photo && (i.colors || []).includes('white'));
+    if (!list.length) return msg.textContent = 'No items with a photo are tagged white.';
+    let removed = 0, kept = 0;
+    for (const [n, i] of list.entries()) {
+      msg.textContent = `Checking ${n + 1} of ${list.length}…`;
+      if ((await detectColours(i.photo)).includes('white')) kept++; else { i.colors = i.colors.filter(c => c !== 'white'); removed++; }
+    }
+    if (removed) await save('items');
+    msg.textContent = `Removed white from ${removed} item${removed === 1 ? '' : 's'}${kept ? `; kept it on ${kept} that look white` : ''}.`;
   };
   $('#purchIn', v).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const n = await importPurchasesCSV(await f.text()); toast(`${n} purchases loaded for auto-fill`); renderSettings(); } catch (err) { toast(err.message); } };
   const cp = $('[data-a=clearpurch]', v); if (cp) twoStep(cp, 'Tap to confirm', async () => { S.purchases = []; await save('purchases'); renderSettings(); });
