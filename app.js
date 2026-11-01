@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 42; // shown in the header; bump with CACHE in sw.js
+const VERSION = 43; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -528,10 +528,23 @@ let tab = 'log';
 const view = () => $('#view');
 function go(t) {
   tab = t; $$('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  saveDock(null);
   ({ log: renderLog, closet: renderCloset, calendar: renderCalendar, settings: renderSettings })[t]();
   view().scrollTo(0, 0);
 }
 function refresh() { go(tab); }
+/* Log's save bar, docked just above the tab bar while an outfit being built has items ("Jul 30 · 2 items  [Save outfit]").
+   Its buttons press the form's own (hidden) buttons, so there's one set of handlers. null removes it. */
+function saveDock(info) {
+  let d = $('#savedock'); document.body.classList.toggle('docked', !!info);   // extra room at the bottom of the page while it shows
+  if (!info) { if (d) d.remove(); return; }
+  if (!d) { d = document.createElement('div'); d.id = 'savedock'; document.body.appendChild(d); }
+  d.innerHTML = `<span class="small"><b>${esc(info.label)}</b> · ${info.count} item${info.count === 1 ? '' : 's'}</span><span class="row">${info.editing ? '<button class="ghost" data-dock="canceledit" type="button">Cancel</button>' : ''}<button class="primary" data-dock="saveentry" type="button">${esc(info.button)}</button></span>`;
+  $$('[data-dock]', d).forEach(b => b.onclick = () => $(`[data-a=${b.dataset.dock}]`, view())?.click());
+  const place = () => { const t = $('.tabs').getBoundingClientRect(); d.style.bottom = Math.round(innerHeight - t.top + 8) + 'px'; };
+  place(); requestAnimationFrame(place);
+}
+addEventListener('resize', () => { const d = $('#savedock'); if (d) { const t = $('.tabs').getBoundingClientRect(); d.style.bottom = Math.round(innerHeight - t.top + 8) + 'px'; } });
 
 /* ================= LOG ================= */
 const slotName = typeId => groupKey(typeId).startsWith('g:') ? groupName(groupKey(typeId)) : typeName(typeId);
@@ -591,8 +604,10 @@ function renderLog() {
       <div class="slots">${dr.slots.map(slotHtml).join('')}${dr.extra.map(extraHtml).join('')}<button class="slot add" data-a="addextra" type="button">＋ Add item</button></div>
       ${pairs.length ? `<div class="pairs">Worn together before: ${pairs.join(' · ')}</div>` : ''}
       ${future ? '' : `<label class="check small" style="margin-top:10px"><input type="checkbox" id="noWear" ${dr.noWear ? 'checked' : ''}> Don’t count as a wear (still shows on the calendar)</label>`}
-      <div class="row end savebar ${chosen.length ? 'floating' : ''}">${dr.editingId ? '<button class="ghost" data-a="canceledit" type="button">Cancel</button>' : ''}<button class="primary" data-a="saveentry" type="button">${dr.editingId ? 'Save changes' : future ? 'Save plan' : 'Save outfit'}</button></div>
+      <div class="row end savebar ${chosen.length ? 'docked' : ''}">${dr.editingId ? '<button class="ghost" data-a="canceledit" type="button">Cancel</button>' : ''}<button class="primary" data-a="saveentry" type="button">${dr.editingId ? 'Save changes' : future ? 'Save plan' : 'Save outfit'}</button></div>
     </section>`;
+  saveDock(chosen.length ? { label: d === today() ? 'Today' : prettyDate(d).replace(/, \d{4}$/, ''), count: chosen.length, editing: !!dr.editingId,
+    button: dr.editingId ? 'Save changes' : future ? 'Save plan' : 'Save outfit' } : null);
   const v = view();
   const setDate = nd => { logState.date = nd; if (!logState.draft.editingId) logState.draft = newDraft(logState.draft.templateId); renderLog(); };
   $('#logDate', v).onchange = e => e.target.value && setDate(e.target.value);
