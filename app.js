@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 32; // shown in the header; bump with CACHE in sw.js
+const VERSION = 33; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -650,7 +650,7 @@ function pick({ typeId, title, current, date }, cb) {
   let showAll = false, q = '', typeFilter = typeId, here = !!S.settings.logLocation;
   openModal(`${head(title)}
     ${typeId ? '' : `<div class="chips" id="pkChips"></div>`}
-    <input type="search" id="pkQ" placeholder="Search name, brand, tag">
+    <input type="search" id="pkQ" placeholder="Search name, brand, tag" enterkeyhint="go">
     <label class="check" style="margin:8px 0 2px"><input type="checkbox" id="pkAll"> Show resting and retired items</label>
     ${S.settings.logLocation ? `<label class="check" style="margin:2px 0 8px"><input type="checkbox" id="pkHere" checked> Only items at ${esc(locName(S.settings.logLocation))}</label>` : ''}
     <div class="grid" id="pkGrid"></div>
@@ -672,6 +672,8 @@ function pick({ typeId, title, current, date }, cb) {
       $$('[data-item]', sh).forEach(b => b.onclick = () => { closeModal(); cb(b.dataset.item); });
     };
     $('#pkQ', sh).oninput = e => { q = e.target.value.trim().toLowerCase(); draw(); };
+    // return on the keyboard picks the first match
+    $('#pkQ', sh).onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const first = $('#pkGrid [data-item]', sh); if (first) first.click(); } };
     $('#pkAll', sh).onchange = e => { showAll = e.target.checked; draw(); };
     const ph = $('#pkHere', sh); if (ph) ph.onchange = e => { here = e.target.checked; draw(); };
     const none = $('[data-a=none]', sh); if (none) none.onclick = () => { closeModal(); cb(null); };
@@ -1550,6 +1552,12 @@ function applyTheme() {
 (async function start() {
   try { await load(); } catch (e) { view().innerHTML = `<div class="empty">This browser blocked local storage, so Rotation can’t save. (${esc(e.message || e)})</div>`; return; }
   applyTheme();
+  // iOS doesn't shrink the page for the keyboard, so sheets would sit behind it. Size the sheet area to what's
+  // actually visible (the visual viewport) so the top of a sheet, e.g. picker results, stays above the keyboard.
+  if (window.visualViewport) {
+    const vv = visualViewport, fit = () => Object.assign($('#modal').style, { top: vv.offsetTop + 'px', height: vv.height + 'px', bottom: 'auto' });
+    vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
+  }
   $$('.tabs button').forEach(b => b.onclick = () => go(b.dataset.tab));
   $('#sync').onclick = () => { if (S.settings.clientId) backupNow(true); else go('settings'); };
   window.addEventListener('online', () => { renderSync(); scheduleBackup(); });
