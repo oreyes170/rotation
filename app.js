@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 41; // shown in the header; bump with CACHE in sw.js
+const VERSION = 42; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -591,7 +591,7 @@ function renderLog() {
       <div class="slots">${dr.slots.map(slotHtml).join('')}${dr.extra.map(extraHtml).join('')}<button class="slot add" data-a="addextra" type="button">＋ Add item</button></div>
       ${pairs.length ? `<div class="pairs">Worn together before: ${pairs.join(' · ')}</div>` : ''}
       ${future ? '' : `<label class="check small" style="margin-top:10px"><input type="checkbox" id="noWear" ${dr.noWear ? 'checked' : ''}> Don’t count as a wear (still shows on the calendar)</label>`}
-      <div class="row end">${dr.editingId ? '<button class="ghost" data-a="canceledit" type="button">Cancel</button>' : ''}<button class="primary" data-a="saveentry" type="button">${dr.editingId ? 'Save changes' : future ? 'Save plan' : 'Save outfit'}</button></div>
+      <div class="row end savebar ${chosen.length ? 'floating' : ''}">${dr.editingId ? '<button class="ghost" data-a="canceledit" type="button">Cancel</button>' : ''}<button class="primary" data-a="saveentry" type="button">${dr.editingId ? 'Save changes' : future ? 'Save plan' : 'Save outfit'}</button></div>
     </section>`;
   const v = view();
   const setDate = nd => { logState.date = nd; if (!logState.draft.editingId) logState.draft = newDraft(logState.draft.templateId); renderLog(); };
