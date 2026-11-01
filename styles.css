@@ -100,6 +100,16 @@ textarea{min-height:64px;resize:vertical}
 .item .meta{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nums{font-variant-numeric:tabular-nums;font-size:12px;color:var(--fg)}
 .badge{position:absolute;top:6px;left:6px;font-size:11px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--rest-bg);color:var(--warn)}
+/* 3 items per row on phones (Setup → Look): tighter cards so names and counts still fit */
+@media (max-width:560px){
+  [data-cols="3"] .grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  [data-cols="3"] .item .body{padding:6px 7px 8px;gap:1px}
+  [data-cols="3"] .item .name{font-size:12.5px}
+  [data-cols="3"] .item .meta,[data-cols="3"] .nums{font-size:10.5px}
+  [data-cols="3"] .nums{color:var(--muted)}
+  [data-cols="3"] .badge{font-size:9.5px;padding:1px 5px;top:4px;left:4px}
+  [data-cols="3"] .thumb .ph{font-size:20px}
+}
 .badge.ret{background:var(--surface2);color:var(--muted)}
 .badge.near{background:var(--ok-bg);color:var(--ok)}
 .empty{padding:28px 12px;text-align:center;color:var(--muted)}

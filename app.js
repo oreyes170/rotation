@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 33; // shown in the header; bump with CACHE in sw.js
+const VERSION = 34; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -63,7 +63,7 @@ function defaults() {
     types, items: [], entries: [], days: {}, filters: [], purchases: [],
     locations: [{ id: uid(), name: 'Home' }],
     templates: [{ id: uid(), name: 'Daily', slots: [id('Short-sleeve tee'), id('Work shirt'), id('Cap'), id('Tie')] }],
-    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], theme: 'auto', glass: true, schema: 3 }
+    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], theme: 'auto', glass: true, cols: 3, schema: 3 }
   };
 }
 
@@ -1158,6 +1158,7 @@ function renderSettings() {
 
     <h2>Look</h2>
     <section class="card"><label class="field"><span>Theme</span><select id="sTheme">${[['auto', 'Match phone (light or dark)'], ['light', 'Light'], ['dark', 'Dark'], ['brown', 'Chocolate'], ['ipod', 'Click Wheel'], ['aqua', 'Aqua'], ['luna', 'Luna'], ['blades', 'Blades'], ['aero', 'Aero'], ['w98', 'Retro 98']].map(([v, l]) => `<option value="${v}" ${(st.theme || 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="field" style="margin-top:12px"><span>Items per row (phone)</span><select id="sCols">${[2, 3].map(n => `<option value="${n}" ${(st.cols || 3) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="check" style="margin-top:12px"><input type="checkbox" id="sGlass" ${st.glass !== false ? 'checked' : ''}> Glass tab bar (floating, see-through)</label></section>
 
     <h2>Counting</h2>
@@ -1246,6 +1247,7 @@ function renderSettings() {
   $('[data-a=addfilter]', v).onclick = () => editFilter(null);
   // counting
   $('#sTheme', v).onchange = async e => { S.settings.theme = e.target.value; applyTheme(); await save(); };
+  $('#sCols', v).onchange = async e => { S.settings.cols = Number(e.target.value); applyTheme(); await save(); };
   $('#sGlass', v).onchange = async e => { S.settings.glass = e.target.checked; applyTheme(); await save(); };
   $('#sDays', v).onchange = async e => { S.settings.recentDays = Math.max(1, parseInt(e.target.value) || 30); await save(); };
   $('#sCpw', v).onchange = async e => { S.settings.cpwIncludesEstimate = e.target.checked; await save(); };
@@ -1543,6 +1545,7 @@ function applyTheme() {
   const t = S.settings.theme || 'auto', root = document.documentElement;
   if (t === 'auto') delete root.dataset.theme; else root.dataset.theme = t;
   if (S.settings.glass !== false) root.dataset.glass = ''; else delete root.dataset.glass;
+  root.dataset.cols = S.settings.cols || 3;
   try { localStorage.setItem('rotation-glass', S.settings.glass !== false ? '1' : '0'); } catch { }
   $('meta[name=theme-color]').content = THEME_BAR[t] || '#1f2a44';
   try { localStorage.setItem('rotation-theme', t); } catch { }   // read by index.html before first paint
