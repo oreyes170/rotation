@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 44; // shown in the header; bump with CACHE in sw.js
+const VERSION = 45; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1236,7 +1236,7 @@ function renderSettings() {
         <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import wear log CSV<input type="file" accept=".csv,text/csv" id="csvWearsIn" hidden></label>
         <button class="ghost" data-a="csvtemplate" type="button">Blank items template</button></div>
       <label class="check"><input type="checkbox" id="csvWearsEst"> When importing a wear log, take those wears off each item’s estimated past wears (they were already counted)</label>
-      <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, made_in, location, brand, store, tags, link, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours, materials and brands are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, same <code>link</code>, or same name and type) update it instead of adding a copy. A row with no <code>name</code> only updates the item it matches by <code>id</code> or <code>link</code>, changing just the columns it has, and new types are created automatically. Export also includes wear counts and cost per wear for reference; those columns are ignored on import. Photos stay in the app.<br>
+      <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, made_in, location, brand, store, tags, link, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours, materials and brands are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, same <code>link</code>, or same name and type) update it instead of adding a copy. A row with no <code>name</code> only updates the item it matches by <code>id</code> or <code>link</code>, changing just the columns it has, and new types are created automatically. Export also includes wear counts and cost per wear for reference; on import those are ignored except <code>total_wears</code>, which sets the estimate to whatever logged wears don’t cover (only counting wears up to <code>as_of</code>, if given). Photos stay in the app.<br>
       <b>Wear log CSV</b> columns: <code>date, item_name</code> (or <code>item_id</code>, or the item’s <code>link</code>), optionally <code>outfit</code> to group rows into one outfit, <code>fit, fit_note</code>, and <code>not_counted</code> (yes for a day that isn’t a wear). Rows with the same date and outfit become one outfit. Imported wears are added to what you already have; a wear already logged for that item and day is skipped.</p>
     </section>`;
   const v = view();
@@ -1399,6 +1399,8 @@ async function importItemsCSV(text) {
     const disc = r.discount_price ?? r.price_paid; if (disc) it.discountPrice = String(num(disc.replace(/[$,]/g, '')) ?? '');
     if (has('purchase_date') || has('date')) it.purchaseDate = csvDate(r.purchase_date || r.date);
     if (has('estimated_past_wears')) it.estWears = String(parseInt(r.estimated_past_wears) || 0);
+    // a known total (e.g. from another app, as of the day it was exported): the estimate is whatever logged wears up to then don't cover
+    if (has('total_wears')) { const asOf = csvDate(r.as_of) || '9999-12-31', logged = wearDates(it.id).filter(d => d <= asOf).length; it.estWears = String(Math.max(0, (parseInt(r.total_wears) || 0) - logged)); }
     if (has('wear_limit')) it.limit = num(r.wear_limit) ? { wears: num(r.wear_limit), restMonths: num(r.rest_months) || 0 } : null;
     if ('retired' in r) it.retired = truthy(r.retired);
     if (has('notes')) it.notes = r.notes;

@@ -64,7 +64,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **This has not been tested against a real Google account yet.**
 
 ## CSV
-- **Items:** import and export. Matching is by `id`, then `link`, then name plus type. A row with no name only updates the item it matches by `id` or `link`, and only the columns it has. Unknown types and locations are created automatically. Tags and colours are separated with `;`.
+- **Items:** import and export. Matching is by `id`, then `link`, then name plus type. A `total_wears` column (optionally with `as_of`) sets `estWears` to whatever counted wears up to that date don't cover, for totals known from elsewhere; since export writes total = tracked + estimate, a plain round trip leaves estimates unchanged. A row with no name only updates the item it matches by `id` or `link`, and only the columns it has. Unknown types and locations are created automatically. Tags and colours are separated with `;`.
 - **Wear log:** import and export, with fit included. Rows match an item by `item_id`, name, or `link`; `not_counted` (yes) marks a day that isn't a wear. Imports add to the existing history; a wear already logged for that item and day is skipped. An optional checkbox takes imported wears off `estWears`, for wears that were already counted as estimates.
 - **Purchases:** import only, for auto-fill. Columns are `date, retailer, item, size, color, price`.
 - **Keep the owner's data files out of this public repo.** That includes exports from other wardrobe apps and purchase history.
