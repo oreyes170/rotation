@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 46; // shown in the header; bump with CACHE in sw.js
+const VERSION = 47; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -739,6 +739,7 @@ function renderCloset() {
   view().innerHTML = `
     <div class="chips" id="chips">${chips.map(c => `<button class="chip ${closet.chip === c.id ? 'on' : ''}" data-c="${c.id}" type="button">${esc(c.name)}</button>`).join('')}
       <button class="chip add" data-a="newfilter" type="button">＋ Filter</button></div>
+    <button class="ghost laundrybtn" data-a="laundry" type="button">🧺 Laundry check: pack it or put it away?</button>
     <div class="toolbar">
       <input class="q" type="search" id="cq" placeholder="Search name, brand, store, tag" value="${esc(closet.q)}">
       <select id="cstatus" aria-label="Status">
@@ -792,8 +793,39 @@ function renderCloset() {
   $('#cfit', v).onchange = e => { closet.fit = e.target.value; draw(); };
   $('#cphoto', v).onchange = e => { closet.photo = e.target.value; draw(); };
   $('#cdays', v).onchange = async e => { const n = Math.max(1, parseInt(e.target.value) || 30); S.settings.recentDays = n; await save(); renderCloset(); };
+  $('[data-a=laundry]', v).onclick = openLaundry;
   $('[data-a=add]', v).onclick = () => openEditor(null, { typeId: closet.chip.startsWith('t:') ? closet.chip.slice(2) : null });
   draw();
+}
+
+/* Laundry check: look up clothes coming out of the wash and see whether each one is resting (pack it) or can go back
+   in the drawer. Starts with what was worn in the last two weeks; search covers everything, resting and retired too. */
+function laundryVerdict(it) {
+  const st = stats(it);
+  if (st.status === 'retired') return { cls: 'ret', text: 'Retired', sub: 'gone for good' };
+  if (st.status === 'resting') return { cls: 'pack', text: '🧳 Pack it', sub: `resting until ${prettyDate(st.restUntil).replace(/, \d{4}$/, '')}` };
+  if (st.lim) { const left = num(st.lim.wears) - st.cycleWears;
+    return { cls: 'drawer', text: 'Drawer', sub: left <= 1 ? 'last wear before it rests' : `${st.cycleWears} of ${num(st.lim.wears)} wears this cycle` }; }
+  return { cls: 'drawer', text: 'Drawer', sub: 'no wear limit' };
+}
+function openLaundry() {
+  openModal(`${head('Laundry check')}
+    <input type="search" id="lq" placeholder="Search name, brand, tag" enterkeyhint="search">
+    <div class="muted small" id="lnote" style="margin:8px 2px"></div>
+    <ul class="list laundry" id="llist"></ul>`, sh => {
+    const draw = () => {
+      const q = $('#lq', sh).value.trim().toLowerCase(), since = addDays(today(), -14);
+      const items = q ? S.items.filter(i => matchQ(i, q)).sort((a, b) => a.name.localeCompare(b.name))
+        : S.items.filter(i => (stats(i).last || '') >= since).sort((a, b) => (stats(b).last || '').localeCompare(stats(a).last || ''));
+      $('#lnote', sh).textContent = q ? `${items.length} match${items.length === 1 ? '' : 'es'}` : 'Worn in the last two weeks, newest first. Search for anything else.';
+      $('#llist', sh).innerHTML = items.slice(0, 60).map(i => { const v = laundryVerdict(i);
+        return `<li data-lid="${i.id}">${thumb(i)}<div class="grow"><div>${esc(i.name)}</div><div class="muted small">${esc([typeName(i.typeId), stats(i).last ? 'worn ' + prettyDate(stats(i).last).replace(/, \d{4}$/, '') : ''].filter(Boolean).join(' · '))}</div>
+          <select class="lloc" data-lloc="${i.id}" aria-label="Kept at">${locOptions(i.location).replace('>Not set<', '>Kept at: not set<')}</select></div>
+          <div class="verdict ${v.cls}"><b>${v.text}</b><span>${esc(v.sub)}</span></div></li>`; }).join('') || '<li class="muted small">Nothing found.</li>';
+      $$('[data-lloc]', sh).forEach(sel => wireLocSelect(sel, async val => { const it = itemById(sel.dataset.lloc); it.location = val; await save('items'); toast(val ? `${it.name}: kept at ${locName(val)}` : 'Location cleared'); }));
+    };
+    $('#lq', sh).oninput = draw; draw();
+  }, { top: true });
 }
 
 /* item detail */

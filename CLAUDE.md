@@ -48,6 +48,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Tags** are entered as chips. Known tags (on items, plus `tagLibrary`) are suggested as you type, including close spellings, and an unknown tag is marked "new" so typos stand out.
 - **Retired** means gone for good and is set by hand. **Resting** is temporary and comes from the wear limit.
 - **The item picker** hides resting and retired items by default and sorts by least recently worn.
+- **Laundry check** (button at the top of Closet, `openLaundry`): a lookup for clothes coming out of the wash. With no search it lists what was worn in the last two weeks; search covers every item, resting and retired too. Each row says "Pack it" (resting, until when), "Drawer" (with wears left in the cycle) or "Retired", and has the item's Kept at menu so a packed item's place can be changed on the spot.
 - **Auto-fill:**
   - Type is guessed from words in the name.
   - Colours are found by sampling the photo (`detectColours`): the background is the median shade of the border, and everything connected to the border that's close to it (shadows, gradients) is removed before counting; if almost nothing is left, the item is the background's colour. Setup → Photos → "Remove background white" re-checks items with photos and takes "white" off where the photo shows it's only the background (the old app tagged white on white-background photos).
