@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 45; // shown in the header; bump with CACHE in sw.js
+const VERSION = 46; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1595,14 +1595,15 @@ function renderSync(label) {
 }
 
 /* ---------- theme ---------- */
-const THEME_BAR = { brown: '#2b1913', ipod: '#c9d0bf', aqua: '#d6d6d6', luna: '#0a50d6', blades: '#5aa31f', aero: '#0f1d29', w98: '#008080' };   // status bar colour for themes that need their own
+/* the iPhone status bar area is painted this colour (the app no longer draws under it, so iOS has nothing to blur): match each header */
+const THEME_BAR = { light: '#f4f2ee', dark: '#13161d', brown: '#2b1913', ipod: '#c9d0bf', aqua: '#f0f0f0', luna: '#2a7cf0', blades: '#a2dc5a', aero: '#3a4852', w98: '#000080' };
 function applyTheme() {
   const t = S.settings.theme || 'auto', root = document.documentElement;
   if (t === 'auto') delete root.dataset.theme; else root.dataset.theme = t;
   if (S.settings.glass !== false) root.dataset.glass = ''; else delete root.dataset.glass;
   root.dataset.cols = S.settings.cols || 3;
   try { localStorage.setItem('rotation-glass', S.settings.glass !== false ? '1' : '0'); } catch { }
-  $('meta[name=theme-color]').content = THEME_BAR[t] || '#1f2a44';
+  $('meta[name=theme-color]').content = THEME_BAR[t] || THEME_BAR[matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'];
   try { localStorage.setItem('rotation-theme', t); } catch { }   // read by index.html before first paint
 }
 
@@ -1610,6 +1611,7 @@ function applyTheme() {
 (async function start() {
   try { await load(); } catch (e) { view().innerHTML = `<div class="empty">This browser blocked local storage, so Rotation can’t save. (${esc(e.message || e)})</div>`; return; }
   applyTheme();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);   // "Match phone" follows the phone's light/dark switch
   // The page never scrolls (main does). If iOS nudges it anyway when the keyboard opens, put it back when focus leaves.
   // (Sizing sheets from window.visualViewport was tried and dropped: the iPhone home-screen app reported wrong sizes.)
   document.addEventListener('focusout', () => setTimeout(() => { if (scrollY || document.documentElement.scrollTop) scrollTo(0, 0); }, 60));
