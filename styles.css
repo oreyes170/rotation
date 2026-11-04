@@ -12,6 +12,12 @@
   --bg:#13161d; --surface:#1c2029; --surface2:#262b36; --fg:#ecebe7; --muted:#9a9eaa; --line:#323846;
   --accent:#9fb4e6; --accent-fg:#111522; --tag:#f08a5d; --ok:#6cc596; --warn:#e3b25a; --danger:#ef7a6f;
   --rest-bg:#3a2e1c; --ok-bg:#1d3327; --shadow:none; color-scheme:dark; }
+/* True black (OLED): pure black background and bars so the screen's pixels switch off; cards a step above */
+:root[data-theme="oled"]{
+  --bg:#000; --surface:#0f0f10; --surface2:#1a1a1c; --fg:#ececec; --muted:#8e8e93; --line:#262628;
+  --accent:#9fb4e6; --accent-fg:#000; --tag:#f08a5d; --ok:#6cc596; --warn:#e3b25a; --danger:#ef7a6f;
+  --rest-bg:#2a2114; --ok-bg:#12241a; --shadow:none; color-scheme:dark; }
+[data-theme="oled"] .tabs{background:#000}
 
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -179,7 +185,7 @@ body.docked main{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
 [data-glass] #savedock{left:14px;right:14px;border-radius:22px;border:0;background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(255,255,255,.22));
   -webkit-backdrop-filter:blur(18px) saturate(190%);backdrop-filter:blur(18px) saturate(190%);box-shadow:0 8px 24px rgba(20,24,35,.16),inset 0 1px 0 rgba(255,255,255,.8)}
 @media (prefers-color-scheme: dark){:root[data-glass]:not([data-theme]) #savedock{background:linear-gradient(180deg,rgba(60,64,78,.5),rgba(25,28,36,.4));box-shadow:0 8px 24px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.18)}}
-:root[data-glass][data-theme="dark"] #savedock{background:linear-gradient(180deg,rgba(60,64,78,.5),rgba(25,28,36,.4));box-shadow:0 8px 24px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.18)}
+:root[data-glass][data-theme="dark"] #savedock,:root[data-glass][data-theme="oled"] #savedock{background:linear-gradient(180deg,rgba(60,64,78,.5),rgba(25,28,36,.4));box-shadow:0 8px 24px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.18)}
 [data-glass][data-theme="brown"] #savedock{background:linear-gradient(180deg,rgba(90,58,44,.6),rgba(43,25,19,.5));box-shadow:0 8px 24px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,220,200,.2)}
 [data-theme="w98"] #savedock{border-radius:0;background:#c0c0c0;border:0;box-shadow:var(--up)}
 /* Save / Cancel / Delete stay pinned to the bottom of long sheets (item editor, quick filter) */
@@ -276,10 +282,10 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
   :root[data-glass]:not([data-theme]) .tabs::after{background:radial-gradient(120% 60% at 30% 0%,rgba(255,255,255,.14),transparent 55%)}
   :root[data-glass]:not([data-theme]) .tabs button{color:rgba(236,235,231,.7)}
   :root[data-glass]:not([data-theme]) .tabs button.on{color:var(--accent);background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.08));box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 0 0 1px rgba(255,255,255,.12)}}
-:root[data-glass][data-theme="dark"] .tabs{background:linear-gradient(180deg,rgba(60,64,78,.45),rgba(25,28,36,.35));box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.22),inset 0 0 0 1px rgba(255,255,255,.12)}
-:root[data-glass][data-theme="dark"] .tabs::after{background:radial-gradient(120% 60% at 30% 0%,rgba(255,255,255,.14),transparent 55%)}
-:root[data-glass][data-theme="dark"] .tabs button{color:rgba(236,235,231,.7)}
-:root[data-glass][data-theme="dark"] .tabs button.on{color:var(--accent);background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.08));box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 0 0 1px rgba(255,255,255,.12)}
+:root[data-glass][data-theme="dark"] .tabs,:root[data-glass][data-theme="oled"] .tabs{background:linear-gradient(180deg,rgba(60,64,78,.45),rgba(25,28,36,.35));box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.22),inset 0 0 0 1px rgba(255,255,255,.12)}
+:root[data-glass][data-theme="dark"] .tabs::after,:root[data-glass][data-theme="oled"] .tabs::after{background:radial-gradient(120% 60% at 30% 0%,rgba(255,255,255,.14),transparent 55%)}
+:root[data-glass][data-theme="dark"] .tabs button,:root[data-glass][data-theme="oled"] .tabs button{color:rgba(236,235,231,.7)}
+:root[data-glass][data-theme="dark"] .tabs button.on,:root[data-glass][data-theme="oled"] .tabs button.on{color:var(--accent);background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.08));box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 0 0 1px rgba(255,255,255,.12)}
 /* Chocolate */
 [data-glass][data-theme="brown"] .tabs{background:linear-gradient(180deg,rgba(90,58,44,.5),rgba(43,25,19,.38));box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,220,200,.25),inset 0 0 0 1px rgba(255,220,200,.12)}
 [data-glass][data-theme="brown"] .tabs::before{content:none}
