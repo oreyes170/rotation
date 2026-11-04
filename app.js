@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 50; // shown in the header; bump with CACHE in sw.js
+const VERSION = 51; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1192,6 +1192,11 @@ function renderSettings() {
   const used = id => S.items.filter(i => i.typeId === id).length;
   const st = S.settings;
   view().innerHTML = `
+    <h2>Look</h2>
+    <section class="card"><label class="field"><span>Theme</span><select id="sTheme">${[['auto', 'Match phone (light or dark)'], ['light', 'Light'], ['dark', 'Dark'], ['brown', 'Chocolate'], ['ipod', 'Click Wheel'], ['aqua', 'Aqua'], ['luna', 'Luna'], ['blades', 'Blades'], ['aero', 'Aero'], ['w98', 'Retro 98']].map(([v, l]) => `<option value="${v}" ${(st.theme || 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="field" style="margin-top:12px"><span>Items per row (phone)</span><select id="sCols">${[2, 3].map(n => `<option value="${n}" ${(st.cols || 3) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="check" style="margin-top:12px"><input type="checkbox" id="sGlass" ${st.glass !== false ? 'checked' : ''}> Glass tab bar (floating, see-through)</label></section>
+
     <h2>Clothing types</h2>
     <section class="card"><p class="help" style="margin-top:0">Each type gets its own filter chip and calendar view. <b>Size</b> fills in automatically when you add an item of that type. Types with the same <b>Group</b> (like Tees) share one calendar view and fill the same outfit slot. A wear limit (wears, then months of rest) applies to every item of the type unless the item sets its own.</p>
       ${S.types.map(t => `<div class="set-row" data-type="${t.id}">
@@ -1235,11 +1240,6 @@ function renderSettings() {
       <label class="check"><input type="checkbox" id="phReplace"> Replace photos items already have</label>
       <div class="row"><button class="ghost" data-a="dewhite" type="button">Remove background white</button><span class="muted small" id="dewhiteMsg">Takes “white” off items whose photo shows it’s only the background.</span></div>
       <div class="row"><label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import photos<input type="file" accept="image/*,.json,application/json" id="phIn" multiple hidden></label><span class="muted small" id="phMsg"></span></div></section>
-
-    <h2>Look</h2>
-    <section class="card"><label class="field"><span>Theme</span><select id="sTheme">${[['auto', 'Match phone (light or dark)'], ['light', 'Light'], ['dark', 'Dark'], ['brown', 'Chocolate'], ['ipod', 'Click Wheel'], ['aqua', 'Aqua'], ['luna', 'Luna'], ['blades', 'Blades'], ['aero', 'Aero'], ['w98', 'Retro 98']].map(([v, l]) => `<option value="${v}" ${(st.theme || 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      <label class="field" style="margin-top:12px"><span>Items per row (phone)</span><select id="sCols">${[2, 3].map(n => `<option value="${n}" ${(st.cols || 3) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-      <label class="check" style="margin-top:12px"><input type="checkbox" id="sGlass" ${st.glass !== false ? 'checked' : ''}> Glass tab bar (floating, see-through)</label></section>
 
     <h2>Counting</h2>
     <section class="card stack">
