@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 49; // shown in the header; bump with CACHE in sw.js
+const VERSION = 50; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -63,7 +63,7 @@ function defaults() {
     types, items: [], entries: [], days: {}, filters: [], purchases: [],
     locations: [{ id: uid(), name: 'Home' }],
     templates: [{ id: uid(), name: 'Daily', slots: [id('Short-sleeve tee'), id('Work shirt'), id('Cap'), id('Tie')] }],
-    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], theme: 'auto', glass: true, cols: 3, schema: 4 }
+    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], theme: 'auto', glass: true, cols: 3, schema: 5 }
   };
 }
 
@@ -96,6 +96,11 @@ async function load() {
     // v4: an item's single `brand` becomes a list, `brands`
     S.items.forEach(i => { i.brands = brandsOf(i); delete i.brand; });
     S.settings.schema = 4; await DB.setMany({ items: S.items, settings: S.settings });
+  }
+  if (S.settings.schema < 5) {
+    // v5: made in becomes a list (e.g. assembled in one country from another's parts)
+    S.items.forEach(i => { i.madeIn = madeOf(i); });
+    S.settings.schema = 5; await DB.setMany({ items: S.items, settings: S.settings });
   }
 }
 
@@ -398,6 +403,7 @@ function sizeFor(typeId) {
   return Object.entries(n).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
 }
 /* items can have several brands (a collab, or a print brand on a blank like Comfort Colors); old data had one `brand` */
+const madeOf = i => Array.isArray(i.madeIn) ? i.madeIn : i.madeIn ? [i.madeIn] : [];
 const brandsOf = i => i.brands || (i.brand ? [i.brand] : []);
 const allBrands = () => [...new Set(S.items.flatMap(brandsOf))].sort((a, b) => a.localeCompare(b));
 function allTags() { const s = new Set(); S.items.forEach(i => (i.tags || []).forEach(t => s.add(t))); return [...s].sort(); }
@@ -413,7 +419,7 @@ function editDist(a, b) {
 /* tag entry: each tag becomes a chip. Known tags are suggested as you type (close spellings too),
    and a tag that matches nothing known is marked "new" so typos stand out. Returns a getter.
    Also used for materials, with field 'materials' and the common materials as extras. */
-function tagField(box, initial, { field = 'tags', extra = S.settings.tagLibrary || [], noun = 'tag', keepCase = false, values = i => i[field] || [] } = {}) {
+function tagField(box, initial, { field = 'tags', extra = S.settings.tagLibrary || [], noun = 'tag', nouns = noun + 's', keepCase = false, values = i => i[field] || [] } = {}) {
   // keepCase (brands): spelling is kept and matched case-insensitively; otherwise everything is lowercase
   const tags = [...initial], counts = {}, L = s => s.toLowerCase();
   S.items.forEach(i => values(i).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
@@ -430,7 +436,7 @@ function tagField(box, initial, { field = 'tags', extra = S.settings.tagLibrary 
       if (q.length >= 3) close = known.filter(t => !L(t).includes(q) && editDist(q, L(t)) <= (q.length > 5 ? 2 : 1));
     } else list = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
     list = [...list, ...close].filter(t => !has(t)).slice(0, 12);
-    sugg.innerHTML = (q && !list.length ? '' : `<span class="muted small">${q ? (close.length && !list.some(t => L(t).includes(q)) ? 'Did you mean' : `Your ${noun}s`) : list.length ? 'Most used' : `Start typing to see your ${noun}s`} </span>`)
+    sugg.innerHTML = (q && !list.length ? '' : `<span class="muted small">${q ? (close.length && !list.some(t => L(t).includes(q)) ? 'Did you mean' : `Your ${nouns}`) : list.length ? 'Most used' : `Start typing to see your ${nouns}`} </span>`)
       + list.map(t => `<button class="tag" data-add="${esc(t)}" type="button">+ ${esc(t)}</button>`).join('')
       + (q && !isKnown(q) && !has(q) ? `<button class="tag new" data-add="${esc(inp.value.trim())}" type="button">+ new ${noun} “${esc(inp.value.trim())}”</button>` : '');
   };
@@ -720,7 +726,7 @@ function pick({ typeId, title, current, date }, cb) {
     drawChips(); draw();
   }, { top: true });
 }
-const matchQ = (i, q) => [i.name, ...brandsOf(i), i.store, i.size, locName(i.location), typeName(i.typeId), ...(i.tags || []), ...(i.colors || []), ...(i.materials || []), i.madeIn].join(' ').toLowerCase().includes(q);
+const matchQ = (i, q) => [i.name, ...brandsOf(i), i.store, i.size, locName(i.location), typeName(i.typeId), ...(i.tags || []), ...(i.colors || []), ...(i.materials || []), ...madeOf(i)].join(' ').toLowerCase().includes(q);
 
 /* ================= CLOSET ================= */
 const closet = { chip: 'all', q: '', sort: 'last', status: 'active', loc: '', fit: '', photo: '' };
@@ -840,7 +846,7 @@ function openDetail(id, range = { from: '', to: '' }) {
     <div class="detail-top">${thumb(it)}<div class="stack" style="gap:4px">
       <div class="muted small">${esc([typeName(it.typeId), it.size, brandsOf(it).join(' / '), it.store].filter(Boolean).join(' · '))}</div>
       ${(it.colors || []).length ? `<div class="small">${esc(it.colors.join(', '))}</div>` : ''}
-      ${(it.materials || []).length || it.madeIn ? `<div class="small">${esc([(it.materials || []).join(', '), it.madeIn && 'made in ' + it.madeIn].filter(Boolean).join(' · '))}</div>` : ''}
+      ${(it.materials || []).length || madeOf(it).length ? `<div class="small">${esc([(it.materials || []).join(', '), madeOf(it).length && 'made in ' + madeOf(it).join(' / ')].filter(Boolean).join(' · '))}</div>` : ''}
       ${/^https?:\/\//i.test(it.link || '') ? `<a class="small" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">Open link ↗</a>` : ''}
       <div>${(it.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
       <label class="small muted" style="display:flex;gap:6px;align-items:center">Kept at <select id="dLoc" style="width:auto;padding:4px 8px">${locOptions(it.location)}</select></label>
@@ -890,7 +896,7 @@ function openDetail(id, range = { from: '', to: '' }) {
 function openEditor(item, { typeId = null, onSave } = {}) {
   const isNew = !item;
   const startType = typeId || S.types[0]?.id;
-  const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brands: [], store: '', size: sizeFor(startType), colors: [], location: S.settings.logLocation || '', tags: [], materials: [], madeIn: '', link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
+  const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brands: [], store: '', size: sizeFor(startType), colors: [], location: S.settings.logLocation || '', tags: [], materials: [], madeIn: [], link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
   let photo = it.photo, typeTouched = !isNew || !!typeId;
   openModal(`${head(isNew ? 'New item' : 'Edit item')}
     <div class="photo-in"><div id="edPhoto">${photoThumb(photo)}</div><div class="stack" style="gap:6px">
@@ -910,7 +916,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <div class="field full"><span>Colours</span><div id="fColors"></div></div>
       <div class="full tagsugg" id="colSugg"></div>
       <div class="field full"><span>Materials</span><div id="fMats"></div></div>
-      <label class="field full"><span>Made in</span><input id="fMade" value="${esc(it.madeIn || '')}" placeholder="e.g. Honduras" autocomplete="off"></label>
+      <div class="field full"><span>Made in</span><div id="fMade"></div></div>
       <label class="field"><span>Kept at</span><select id="fLoc">${locOptions(it.location)}</select></label>
       <label class="field"><span>Purchase date</span><input type="date" id="fDate" value="${esc(it.purchaseDate)}"></label>
       <label class="field"><span>Purchase price ($)</span><input type="number" step="0.01" min="0" id="fPrice" value="${esc(it.price)}"></label>
@@ -932,7 +938,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
     const brands = tagField($('#fBrands', sh), brandsOf(it), { noun: 'brand', keepCase: true, extra: [], values: brandsOf });
     suggestField($('#fStore', sh), S.purchases.map(p => p.retailer.replace(/\s*\((in-store|online)\)\s*$/i, '')), field('store'));
     suggestField(sizeIn, S.types.map(t => t.defaultSize), field('size'));
-    suggestField($('#fMade', sh), COUNTRIES, field('madeIn'));
+    const getMade = tagField($('#fMade', sh), madeOf(it), { noun: 'country', nouns: 'countries', keepCase: true, extra: COUNTRIES, values: madeOf });
     const showColours = (found, note) => {
       const box = $('#colSugg', sh);
       box.innerHTML = (note ? `<span class="muted small">${esc(note)} </span>` : '') + found.map(c => `<button class="tag" data-col="${esc(c)}" type="button">+ ${esc(c)}</button>`).join('');
@@ -1053,7 +1059,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       const lw = num($('#fLimW', sh).value), lm = num($('#fLimM', sh).value);
       Object.assign(it, {
         name, typeId: typeSel.value, brands: brands(), store: $('#fStore', sh).value.trim(), size: cleanSize(sizeIn.value),
-        materials: getMats(), madeIn: $('#fMade', sh).value.trim(), link: $('#fLink', sh).value.trim(),
+        materials: getMats(), madeIn: getMade(), link: $('#fLink', sh).value.trim(),
         colors: cols(), location: $('#fLoc', sh).value,
         purchaseDate: $('#fDate', sh).value, price: $('#fPrice', sh).value, discountPrice: $('#fDisc', sh).value,
         tags: getTags(), estWears: $('#fEst', sh).value, notes: $('#fNotes', sh).value.trim(),
@@ -1387,7 +1393,7 @@ function itemsCSV() {
   const hdr = ['id', ...ITEM_COLS, 'tracked_wears', 'total_wears', `wears_past_${days}_days`, 'cost_per_wear', 'last_worn', 'status'];
   return toCSV([hdr, ...S.items.map(i => {
     const st = stats(i);
-    return [i.id, i.name, typeName(i.typeId), i.size || '', (i.colors || []).join(';'), (i.materials || []).join(';'), i.madeIn || '', locName(i.location), brandsOf(i).join(';'), i.store, (i.tags || []).join(';'), i.link || '', i.price, i.discountPrice, i.purchaseDate, i.estWears,
+    return [i.id, i.name, typeName(i.typeId), i.size || '', (i.colors || []).join(';'), (i.materials || []).join(';'), madeOf(i).join(';'), locName(i.location), brandsOf(i).join(';'), i.store, (i.tags || []).join(';'), i.link || '', i.price, i.discountPrice, i.purchaseDate, i.estWears,
       i.limit?.wears ?? '', i.limit?.restMonths ?? '', i.retired ? 'yes' : '', i.notes,
       st.tracked, st.total, st.recent, st.cpw != null ? st.cpw.toFixed(2) : '', st.last || '', st.status];
   })]);
@@ -1415,14 +1421,14 @@ async function importItemsCSV(text) {
     const typeId = r.type || r.category || !byKey ? typeFor(r.type || r.category) : byKey.typeId;
     let it = byKey || S.items.find(i => i.name.toLowerCase() === name.toLowerCase() && i.typeId === typeId);
     const isNew = !it;
-    if (isNew) { it = { id: uid(), name, typeId, size: sizeFor(typeId), colors: [], location: '', tryOns: [], brands: [], store: '', tags: [], materials: [], madeIn: '', link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
+    if (isNew) { it = { id: uid(), name, typeId, size: sizeFor(typeId), colors: [], location: '', tryOns: [], brands: [], store: '', tags: [], materials: [], madeIn: [], link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
     const has = k => k in r && r[k] !== '';
     if (name) it.name = name; it.typeId = typeId;
     if (has('brand') || has('brands')) { it.brands = (r.brands || r.brand).split(';').map(b => b.trim()).filter(Boolean); delete it.brand; }
     if (has('size')) it.size = cleanSize(r.size);
     if (has('materials') || has('material')) it.materials = splitTags((r.materials || r.material).replace(/;/g, ','));
     if (has('link') || has('url')) it.link = r.link || r.url;
-    if (has('made_in') || has('country')) it.madeIn = r.made_in || r.country;
+    if (has('made_in') || has('country')) it.madeIn = (r.made_in || r.country || '').split(/[;\/]/).map(x => x.trim()).filter(Boolean);
     if (has('colors') || has('colours') || has('color') || has('colour')) it.colors = splitTags((r.colors || r.colours || r.color || r.colour).replace(/;/g, ','));
     if (has('location')) { const ln = r.location.trim(); let l = S.locations.find(x => x.name.toLowerCase() === ln.toLowerCase()); if (!l) { l = { id: uid(), name: ln }; S.locations.push(l); } it.location = l.id; }
     if (has('store') || has('store_purchased') || has('retailer')) it.store = r.store || r.store_purchased || r.retailer;
