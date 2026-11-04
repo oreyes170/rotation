@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 52; // shown in the header; bump with CACHE in sw.js
+const VERSION = 53; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1193,7 +1193,7 @@ function renderSettings() {
   const st = S.settings;
   view().innerHTML = `
     <h2>Look</h2>
-    <section class="card"><label class="field"><span>Theme</span><select id="sTheme">${[['auto', 'Match phone (light or dark)'], ['light', 'Light'], ['dark', 'Dark'], ['brown', 'Chocolate'], ['ipod', 'Click Wheel'], ['aqua', 'Aqua'], ['luna', 'Luna'], ['blades', 'Blades'], ['aero', 'Aero'], ['w98', 'Retro 98']].map(([v, l]) => `<option value="${v}" ${(st.theme || 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <section class="card"><label class="field"><span>Theme</span><select id="sTheme">${[['auto', 'Match phone (light or dark)'], ['light', 'Light'], ['dark', 'Dark'], ['brown', 'Chocolate'], ['ipod', 'Click Wheel'], ['aqua', 'Aqua'], ['luna', 'Luna'], ['blades', 'Blades'], ['channels', 'Channels'], ['aero', 'Aero'], ['w98', 'Retro 98']].map(([v, l]) => `<option value="${v}" ${(st.theme || 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="field" style="margin-top:12px"><span>Items per row (phone)</span><select id="sCols">${[2, 3].map(n => `<option value="${n}" ${(st.cols || 3) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="check" style="margin-top:12px"><input type="checkbox" id="sGlass" ${st.glass !== false ? 'checked' : ''}> Glass tab bar (floating, see-through)</label></section>
 
@@ -1634,7 +1634,7 @@ function renderSync(label) {
 
 /* ---------- theme ---------- */
 /* the iPhone status bar area is painted this colour (the app no longer draws under it, so iOS has nothing to blur): match each header */
-const THEME_BAR = { light: '#f4f2ee', dark: '#13161d', brown: '#2b1913', ipod: '#c9d0bf', aqua: '#f0f0f0', luna: '#2a7cf0', blades: '#a2dc5a', aero: '#3a4852', w98: '#000080' };
+const THEME_BAR = { light: '#f4f2ee', dark: '#13161d', brown: '#2b1913', ipod: '#c9d0bf', aqua: '#f0f0f0', luna: '#2a7cf0', blades: '#6db42a', channels: '#ffffff', aero: '#3a4852', w98: '#000080' };
 function applyTheme() {
   const t = S.settings.theme || 'auto', root = document.documentElement;
   if (t === 'auto') delete root.dataset.theme; else root.dataset.theme = t;
