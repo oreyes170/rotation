@@ -6,7 +6,7 @@
 <title>Rotation</title>
 <meta name="description" content="Track what you own, what you wear, and when to rest it.">
 <meta name="theme-color" content="#f4f2ee">
-<script>/* apply the saved theme before first paint */ try { const t = localStorage.getItem('rotation-theme'); if (t && t !== 'auto') document.documentElement.dataset.theme = t; if (localStorage.getItem('rotation-glass') !== '0') document.documentElement.dataset.glass = ''; } catch { }</script>
+<script>/* apply the saved theme before first paint */ try { const t = localStorage.getItem('rotation-theme'); if (t && t !== 'auto') document.documentElement.dataset.theme = t; if (localStorage.getItem('rotation-glass') !== '0') document.documentElement.dataset.glass = ''; const b = localStorage.getItem('rotation-bar'); if (b) document.querySelector('meta[name=theme-color]').content = b; } catch { }</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon-32.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">

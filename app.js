@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 53; // shown in the header; bump with CACHE in sw.js
+const VERSION = 54; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1634,22 +1634,26 @@ function renderSync(label) {
 
 /* ---------- theme ---------- */
 /* the iPhone status bar area is painted this colour (the app no longer draws under it, so iOS has nothing to blur): match each header */
-const THEME_BAR = { light: '#f4f2ee', dark: '#13161d', brown: '#2b1913', ipod: '#c9d0bf', aqua: '#f0f0f0', luna: '#2a7cf0', blades: '#6db42a', channels: '#ffffff', aero: '#3a4852', w98: '#000080' };
-function applyTheme() {
+const THEME_BAR = { light: '#f4f2ee', dark: '#13161d', brown: '#2b1913', ipod: '#dfe3e1', aqua: '#f0f0f0', luna: '#2a7cf0', blades: '#6db42a', channels: '#ffffff', aero: '#3a4852', w98: '#000080' };
+function applyTheme(force) {
   const t = S.settings.theme || 'auto', root = document.documentElement;
   if (t === 'auto') delete root.dataset.theme; else root.dataset.theme = t;
   if (S.settings.glass !== false) root.dataset.glass = ''; else delete root.dataset.glass;
   root.dataset.cols = S.settings.cols || 3;
   try { localStorage.setItem('rotation-glass', S.settings.glass !== false ? '1' : '0'); } catch { }
-  $('meta[name=theme-color]').content = THEME_BAR[t] || THEME_BAR[matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'];
-  try { localStorage.setItem('rotation-theme', t); } catch { }   // read by index.html before first paint
+  const bar = THEME_BAR[t] || THEME_BAR[matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'];
+  // iOS doesn't always repaint the status bar when the tag's content changes, so swap in a fresh tag instead
+  const old = $('meta[name=theme-color]');
+  if (force === true || !old || old.content !== bar) { const m = document.createElement('meta'); m.name = 'theme-color'; m.content = bar; old ? old.replaceWith(m) : document.head.append(m); }
+  try { localStorage.setItem('rotation-theme', t); localStorage.setItem('rotation-bar', bar); } catch { }   // read by index.html before first paint
 }
 
 /* ---------- start ---------- */
 (async function start() {
   try { await load(); } catch (e) { view().innerHTML = `<div class="empty">This browser blocked local storage, so Rotation can’t save. (${esc(e.message || e)})</div>`; return; }
   applyTheme();
-  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);   // "Match phone" follows the phone's light/dark switch
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) applyTheme(true); });   // coming back to the app: repaint the status bar colour   // "Match phone" follows the phone's light/dark switch
   // The page never scrolls (main does). If iOS nudges it anyway when the keyboard opens, put it back when focus leaves.
   // (Sizing sheets from window.visualViewport was tried and dropped: the iPhone home-screen app reported wrong sizes.)
   document.addEventListener('focusout', () => setTimeout(() => { if (scrollY || document.documentElement.scrollTop) scrollTo(0, 0); }, 60));
