@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 47; // shown in the header; bump with CACHE in sw.js
+const VERSION = 48; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -910,7 +910,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <div class="field full"><span>Colours</span><div id="fColors"></div></div>
       <div class="full tagsugg" id="colSugg"></div>
       <div class="field full"><span>Materials</span><div id="fMats"></div></div>
-      <label class="field full"><span>Made in</span><input id="fMade" value="${esc(it.madeIn || '')}" placeholder="e.g. Bangladesh" autocomplete="off"></label>
+      <label class="field full"><span>Made in</span><input id="fMade" value="${esc(it.madeIn || '')}" placeholder="e.g. Honduras" autocomplete="off"></label>
       <label class="field"><span>Kept at</span><select id="fLoc">${locOptions(it.location)}</select></label>
       <label class="field"><span>Purchase date</span><input type="date" id="fDate" value="${esc(it.purchaseDate)}"></label>
       <label class="field"><span>Purchase price ($)</span><input type="number" step="0.01" min="0" id="fPrice" value="${esc(it.price)}"></label>
