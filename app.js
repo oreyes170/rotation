@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 61; // shown in the header; bump with CACHE in sw.js
+const VERSION = 62; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1712,19 +1712,37 @@ function applyTheme(force) {
     });
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
-  // swipe left/right: next/previous day on Log, month on Calendar (not on sideways-scrolling chips or fields)
+  // swipe left/right: next/previous day on Log, month on Calendar (not on sideways-scrolling chips or fields).
+  // The page follows the finger; let go past the threshold and it slides out, the new day slides in from the other side.
   let swipe = null;
-  view().addEventListener('touchstart', e => {
-    swipe = e.touches.length === 1 && !e.target.closest('.chips, input, textarea, select') ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: e.timeStamp } : null;
-  }, { passive: true });
-  view().addEventListener('touchend', e => {
-    if (!swipe || !$('#modal').hidden) return;
-    const t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y, quick = e.timeStamp - swipe.t < 800; swipe = null;
-    if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < 2 * Math.abs(dy)) return;
-    const step = dx < 0 ? 1 : -1;
+  const V = view(), reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const move = (x, ms = 0) => { V.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2,.7,.3,1), opacity ${ms}ms` : 'none'; V.style.transform = x ? `translate3d(${x}px,0,0)` : ''; V.style.opacity = x ? String(Math.max(.35, 1 - Math.abs(x) / innerWidth)) : ''; };
+  const turn = step => {
     if (tab === 'log') { logState.date = addDays(logState.date, step); if (!logState.draft?.editingId) logState.draft = newDraft(logState.draft?.templateId); renderLog(); }
-    else if (tab === 'calendar') { const [y, m] = cal.month.split('-').map(Number); cal.month = fmt(new Date(y, m - 1 + step, 1)).slice(0, 7); renderCalendar(); }
+    else { const [y, m] = cal.month.split('-').map(Number); cal.month = fmt(new Date(y, m - 1 + step, 1)).slice(0, 7); renderCalendar(); }
+  };
+  V.addEventListener('touchstart', e => {
+    swipe = (tab === 'log' || tab === 'calendar') && e.touches.length === 1 && !e.target.closest('.chips, input, textarea, select') ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: e.timeStamp, dir: null, dx: 0 } : null;
   }, { passive: true });
+  V.addEventListener('touchmove', e => {
+    if (!swipe || !$('#modal').hidden) return;
+    const t = e.touches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y;
+    if (!swipe.dir && Math.hypot(dx, dy) > 10) swipe.dir = Math.abs(dx) > 1.5 * Math.abs(dy) ? 'x' : 'y';
+    if (swipe.dir !== 'x') return;
+    swipe.dx = dx; if (!reduce.matches) move(dx * .9);
+  }, { passive: true });
+  const end = e => {
+    const s = swipe; swipe = null;
+    if (!s || s.dir !== 'x' || !$('#modal').hidden) { if (s?.dir === 'x') move(0, 180); return; }
+    const dx = s.dx, fast = e.timeStamp - s.t < 300;
+    if (!(Math.abs(dx) > 80 || (fast && Math.abs(dx) > 40))) { move(0, 180); return; }
+    const step = dx < 0 ? 1 : -1;
+    if (reduce.matches) { move(0); turn(step); return; }
+    move(-step * innerWidth, 160);
+    setTimeout(() => { turn(step); move(step * innerWidth * .35); requestAnimationFrame(() => requestAnimationFrame(() => move(0, 220))); }, 160);
+  };
+  V.addEventListener('touchend', end, { passive: true });
+  V.addEventListener('touchcancel', () => { if (swipe?.dir === 'x') move(0, 180); swipe = null; }, { passive: true });
   // iOS can still zoom on a quick double tap: stop the zoom but keep the second tap as a tap
   let lastTap = 0, startXY = null;
   document.addEventListener('touchstart', e => { const t = e.touches[0]; startXY = e.touches.length === 1 ? [t.clientX, t.clientY] : null; }, { passive: true });
