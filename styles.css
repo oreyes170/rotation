@@ -521,11 +521,11 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
 [data-theme="channels"] input[type=checkbox]{accent-color:#34bfec}
 
 /* ===== Ocarina theme (after the classic 3D fantasy-adventure game menus): night-forest background with fairy glows,
-   midnight-blue menu panels with gold frames, cream text, a blue main button, yellow selected chips and tab ===== */
+   deep forest-green menu panels with gold frames, cream text, a blue main button, yellow selected chips and tab ===== */
 :root[data-theme="ocarina"]{
-  --bg:#0c1733; --surface:rgba(14,26,60,.86); --surface2:#1b2a55; --fg:#f4ecd4; --muted:#b3ab92; --line:#3b4a78;
+  --bg:#10221a; --surface:rgba(20,44,30,.9); --surface2:#24412e; --fg:#f4ecd4; --muted:#b9b18f; --line:#3f5e44;
   --accent:#f2c230; --accent-fg:#1b1405; --tag:#8fd16a; --ok:#8fd16a; --warn:#f2c230; --danger:#ff6b5e;
-  --rest-bg:#3a2f0e; --ok-bg:#16351f; --radius:12px; --shadow:0 4px 16px rgba(0,0,0,.45); color-scheme:dark;
+  --rest-bg:#3e3210; --ok-bg:#1d4428; --radius:12px; --shadow:0 4px 16px rgba(0,0,0,.45); color-scheme:dark;
   --gold:#d9b44a; --abtn:radial-gradient(120% 120% at 35% 25%,#7fa8ff 0%,#3a66d6 45%,#23449e 100%);
   --cbtn:linear-gradient(180deg,#ffe07a,#f2c230 55%,#d9a514);
 }
@@ -533,31 +533,31 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
     radial-gradient(3px 3px at 18% 22%,rgba(255,255,220,.9),transparent 60%),
     radial-gradient(2px 2px at 72% 14%,rgba(255,255,220,.7),transparent 60%),
     radial-gradient(2px 2px at 86% 48%,rgba(220,255,255,.6),transparent 60%),
-    radial-gradient(40% 22% at 80% 18%,rgba(140,200,255,.22),transparent 70%),
-    radial-gradient(50% 30% at 10% 70%,rgba(120,220,140,.16),transparent 70%),
-    linear-gradient(180deg,#0b1530 0%,#10284a 45%,#0f3a2c 80%,#0a2a1c 100%) fixed #0c1733}
-[data-theme="ocarina"] .top{background:#0b1530;border-bottom:2px solid var(--gold);box-shadow:0 2px 12px rgba(0,0,0,.5)}
+    radial-gradient(40% 22% at 80% 18%,rgba(255,240,170,.16),transparent 70%),
+    radial-gradient(50% 30% at 10% 70%,rgba(140,230,120,.18),transparent 70%),
+    linear-gradient(180deg,#0e2418 0%,#163a22 45%,#2a3a1a 80%,#2e2414 100%) fixed #10221a}
+[data-theme="ocarina"] .top{background:#10241a;border-bottom:2px solid var(--gold);box-shadow:0 2px 12px rgba(0,0,0,.5)}
 [data-theme="ocarina"] .top h1{font-family:Georgia,"Times New Roman",serif;color:var(--gold);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:19px;text-shadow:0 0 8px rgba(242,194,48,.45),0 2px 0 #000}
-[data-theme="ocarina"] .ver{color:#9fb0d8}
+[data-theme="ocarina"] .ver{color:#b9c99a}
 [data-theme="ocarina"] .sync{background:rgba(0,0,0,.3);border-color:var(--gold);color:#f4ecd4}
 [data-theme="ocarina"] h2{font-family:Georgia,"Times New Roman",serif;color:var(--gold);letter-spacing:.12em;text-shadow:0 1px 0 #000}
 [data-theme="ocarina"] .card,[data-theme="ocarina"] .item,[data-theme="ocarina"] .stat{border:2px solid rgba(217,180,74,.75);box-shadow:inset 0 0 0 1px rgba(0,0,0,.6),0 4px 16px rgba(0,0,0,.45)}
-[data-theme="ocarina"] .sheet,[data-theme="ocarina"] .sheet-head{background:#0e1a3c}
+[data-theme="ocarina"] .sheet,[data-theme="ocarina"] .sheet-head{background:#13291c}
 [data-theme="ocarina"] .sheet{border-top:2px solid var(--gold)}
 [data-theme="ocarina"] .sheet-head h2{color:var(--gold);text-shadow:none}
 [data-theme="ocarina"] button.primary,[data-theme="ocarina"] .fab{background:var(--abtn);border:2px solid #0e2466;color:#fff;font-weight:700;border-radius:999px;box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 8px rgba(40,90,220,.5)}
-[data-theme="ocarina"] button.ghost,[data-theme="ocarina"] button.icon,[data-theme="ocarina"] .chip{background:rgba(10,20,48,.9);border:1.5px solid var(--gold);color:#f4ecd4}
+[data-theme="ocarina"] button.ghost,[data-theme="ocarina"] button.icon,[data-theme="ocarina"] .chip{background:rgba(14,32,20,.92);border:1.5px solid var(--gold);color:#f4ecd4}
 [data-theme="ocarina"] button.ghost,[data-theme="ocarina"] button.danger{border-radius:999px}
 [data-theme="ocarina"] .chip.on{background:var(--cbtn);border-color:#a87c06;color:#1b1405;font-weight:700}
-[data-theme="ocarina"] input,[data-theme="ocarina"] select,[data-theme="ocarina"] textarea,[data-theme="ocarina"] .tagbox{background:#08122b;border:1.5px solid #4a5a8c;color:#f4ecd4}
+[data-theme="ocarina"] input,[data-theme="ocarina"] select,[data-theme="ocarina"] textarea,[data-theme="ocarina"] .tagbox{background:#0b1a10;border:1.5px solid #4e6b4c;color:#f4ecd4}
 [data-theme="ocarina"] .tagbox input.taginput{border:0;background:transparent}
-[data-theme="ocarina"] .thumb{background:#1b2a55}
-[data-theme="ocarina"] .tabs{background:linear-gradient(180deg,rgba(14,26,60,.97),rgba(8,16,40,.97));border-top:2px solid var(--gold)}
+[data-theme="ocarina"] .thumb{background:#24412e}
+[data-theme="ocarina"] .tabs{background:linear-gradient(180deg,rgba(22,46,30,.97),rgba(12,28,18,.97));border-top:2px solid var(--gold)}
 [data-theme="ocarina"] .tabs button{color:#b3ab92}
 [data-theme="ocarina"] .tabs button.on{background:var(--cbtn);color:#1b1405;font-weight:700;box-shadow:0 0 12px rgba(242,194,48,.55)}
 [data-glass][data-theme="ocarina"] .tabs{border:2px solid var(--gold);box-shadow:0 10px 30px rgba(0,0,0,.55)}
 [data-glass][data-theme="ocarina"] .tabs::after{background:radial-gradient(120% 60% at 30% 0%,rgba(255,255,255,.08),transparent 55%)}
-[data-glass][data-theme="ocarina"] #savedock{background:rgba(10,20,48,.92);box-shadow:0 0 0 2px var(--gold),0 8px 24px rgba(0,0,0,.5)}
+[data-glass][data-theme="ocarina"] #savedock{background:rgba(14,32,20,.94);box-shadow:0 0 0 2px var(--gold),0 8px 24px rgba(0,0,0,.5)}
 [data-theme="ocarina"] .badge{background:#d83a3a;color:#fff}
 [data-theme="ocarina"] .cal-cell{border-color:rgba(217,180,74,.45)}
 [data-theme="ocarina"] .cal-cell.today{outline:2px solid #f2c230;box-shadow:0 0 10px rgba(242,194,48,.6)}

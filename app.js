@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 57; // shown in the header; bump with CACHE in sw.js
+const VERSION = 58; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1646,7 +1646,7 @@ function renderSync(label) {
 
 /* ---------- theme ---------- */
 /* the iPhone status bar area is painted this colour (the app no longer draws under it, so iOS has nothing to blur): match each header */
-const THEME_BAR = { light: '#f4f2ee', dark: '#13161d', oled: '#000000', brown: '#2b1913', ipod: '#dfe3e1', aqua: '#f0f0f0', luna: '#2a7cf0', blades: '#6db42a', channels: '#ffffff', ocarina: '#0b1530', aero: '#3a4852', w98: '#000080' };
+const THEME_BAR = { light: '#f4f2ee', dark: '#13161d', oled: '#000000', brown: '#2b1913', ipod: '#dfe3e1', aqua: '#f0f0f0', luna: '#2a7cf0', blades: '#6db42a', channels: '#ffffff', ocarina: '#10241a', aero: '#3a4852', w98: '#000080' };
 function applyTheme(force) {
   const t = S.settings.theme || 'auto', root = document.documentElement;
   if (t === 'auto') delete root.dataset.theme; else root.dataset.theme = t;
