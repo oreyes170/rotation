@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 55; // shown in the header; bump with CACHE in sw.js
+const VERSION = 56; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -63,7 +63,7 @@ function defaults() {
     types, items: [], entries: [], days: {}, filters: [], purchases: [],
     locations: [{ id: uid(), name: 'Home' }],
     templates: [{ id: uid(), name: 'Daily', slots: [id('Short-sleeve tee'), id('Work shirt'), id('Cap'), id('Tie')] }],
-    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], theme: 'auto', glass: true, cols: 3, schema: 5 }
+    settings: { recentDays: 30, cpwIncludesEstimate: true, clientId: '', driveFileId: '', autoBackup: true, lastChange: 0, lastBackup: 0, logLocation: '', tagLibrary: [], theme: 'auto', glass: true, cols: 3, schema: 6 }
   };
 }
 
@@ -102,6 +102,11 @@ async function load() {
     S.items.forEach(i => { i.madeIn = madeOf(i); });
     S.settings.schema = 5; await DB.setMany({ items: S.items, settings: S.settings });
   }
+  if (S.settings.schema < 6) {
+    // v6: "purchase price + discount price paid" becomes "purchase price (what was paid) + full price"
+    S.items.forEach(fixPrices);
+    S.settings.schema = 6; await DB.setMany({ items: S.items, settings: S.settings });
+  }
 }
 
 async function save(...keys) {
@@ -130,6 +135,11 @@ function wearDates(itemId) {
   const set = new Set();
   for (const e of worn()) if (counts(e, itemId)) set.add(e.date);
   return [...set].sort();
+}
+/* old data: price was the list price and discountPrice what was paid. Now price is what was paid, fullPrice the list price */
+function fixPrices(i) {
+  if (num(i.discountPrice) != null) { if (num(i.price) != null && num(i.price) !== num(i.discountPrice)) i.fullPrice = i.price; i.price = i.discountPrice; }
+  delete i.discountPrice; return i;
 }
 function effPrice(i) { const d = num(i.discountPrice), p = num(i.price); return d != null ? d : p; }
 function limitOf(i) {
@@ -850,7 +860,7 @@ function openDetail(id, range = { from: '', to: '' }) {
       ${/^https?:\/\//i.test(it.link || '') ? `<a class="small" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">Open link ↗</a>` : ''}
       <div>${(it.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
       <label class="small muted" style="display:flex;gap:6px;align-items:center">Kept at <select id="dLoc" style="width:auto;padding:4px 8px">${locOptions(it.location)}</select></label>
-      <div class="small">${effPrice(it) != null ? `Paid ${money(effPrice(it))}${num(it.discountPrice) != null && num(it.price) != null ? ` <span class="muted">(list ${money(num(it.price))})</span>` : ''}` : '<span class="muted">No price yet</span>'}${it.purchaseDate ? ` · bought ${prettyDate(it.purchaseDate)}` : ''}</div>
+      <div class="small">${effPrice(it) != null ? `Paid ${money(effPrice(it))}${num(it.fullPrice) != null && num(it.fullPrice) !== effPrice(it) ? ` <span class="muted">(full price ${money(num(it.fullPrice))})</span>` : ''}` : '<span class="muted">No price yet</span>'}${it.purchaseDate ? ` · bought ${prettyDate(it.purchaseDate)}` : ''}</div>
       <div class="small">${esc(limTxt)}</div><div class="small"><b>${esc(rotTxt)}</b>${nextPlan(id) ? ` · planned for ${prettyDate(nextPlan(id))}` : ''}</div>
       ${it.notes ? `<div class="small muted">${esc(it.notes)}</div>` : ''}
     </div></div>
@@ -896,7 +906,7 @@ function openDetail(id, range = { from: '', to: '' }) {
 function openEditor(item, { typeId = null, onSave } = {}) {
   const isNew = !item;
   const startType = typeId || S.types[0]?.id;
-  const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brands: [], store: '', size: sizeFor(startType), colors: [], location: S.settings.logLocation || '', tags: [], materials: [], madeIn: [], link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
+  const it = item ? { ...item } : { id: uid(), name: '', typeId: startType, brands: [], store: '', size: sizeFor(startType), colors: [], location: S.settings.logLocation || '', tags: [], materials: [], madeIn: [], link: '', price: '', fullPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, tryOns: [], created: Date.now() };
   let photo = it.photo, typeTouched = !isNew || !!typeId;
   openModal(`${head(isNew ? 'New item' : 'Edit item')}
     <div class="photo-in"><div id="edPhoto">${photoThumb(photo)}</div><div class="stack" style="gap:6px">
@@ -920,7 +930,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
       <label class="field"><span>Kept at</span><select id="fLoc">${locOptions(it.location)}</select></label>
       <label class="field"><span>Purchase date</span><input type="date" id="fDate" value="${esc(it.purchaseDate)}"></label>
       <label class="field"><span>Purchase price ($)</span><input type="number" step="0.01" min="0" id="fPrice" value="${esc(it.price)}"></label>
-      <label class="field"><span>Discount price paid ($)</span><input type="number" step="0.01" min="0" id="fDisc" value="${esc(it.discountPrice)}"></label>
+      <label class="field"><span>Full price ($)</span><input type="number" step="0.01" min="0" id="fFull" value="${esc(it.fullPrice ?? '')}" placeholder="if on sale"></label>
       <div class="field full"><span>Tags</span><div id="fTags"></div></div>
       <label class="field full"><span>Estimated wears before you started tracking</span><input type="number" min="0" step="1" id="fEst" value="${esc(it.estWears)}" placeholder="0"></label>
       <label class="field"><span>Wear limit (wears)</span><input type="number" min="1" step="1" id="fLimW" value="${esc(it.limit?.wears ?? '')}" placeholder="type default"></label>
@@ -1061,7 +1071,7 @@ function openEditor(item, { typeId = null, onSave } = {}) {
         name, typeId: typeSel.value, brands: brands(), store: $('#fStore', sh).value.trim(), size: cleanSize(sizeIn.value),
         materials: getMats(), madeIn: getMade(), link: $('#fLink', sh).value.trim(),
         colors: cols(), location: $('#fLoc', sh).value,
-        purchaseDate: $('#fDate', sh).value, price: $('#fPrice', sh).value, discountPrice: $('#fDisc', sh).value,
+        purchaseDate: $('#fDate', sh).value, price: $('#fPrice', sh).value, fullPrice: $('#fFull', sh).value,
         tags: getTags(), estWears: $('#fEst', sh).value, notes: $('#fNotes', sh).value.trim(),
         limit: lw ? { wears: lw, restMonths: lm || 0 } : null, retired: $('#fRet', sh).checked, photo
       });
@@ -1274,7 +1284,7 @@ function renderSettings() {
         <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import wear log CSV<input type="file" accept=".csv,text/csv" id="csvWearsIn" hidden></label>
         <button class="ghost" data-a="csvtemplate" type="button">Blank items template</button></div>
       <label class="check"><input type="checkbox" id="csvWearsEst"> When importing a wear log, take those wears off each item’s estimated past wears (they were already counted)</label>
-      <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, made_in, location, brand, store, tags, link, purchase_price, discount_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours, materials and brands are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, same <code>link</code>, or same name and type) update it instead of adding a copy. A row with no <code>name</code> only updates the item it matches by <code>id</code> or <code>link</code>, changing just the columns it has, and new types are created automatically. Export also includes wear counts and cost per wear for reference; on import those are ignored except <code>total_wears</code>, which sets the estimate to whatever logged wears don’t cover (only counting wears up to <code>as_of</code>, if given). Photos stay in the app.<br>
+      <p class="help"><b>Items CSV</b> columns: <code>name, type, size, colors, materials, made_in, location, brand, store, tags, link, purchase_price, full_price, purchase_date, estimated_past_wears, wear_limit, rest_months, retired, notes</code>. Only <code>name</code> is required; tags, colours, materials and brands are separated by <code>;</code>. Rows that match an existing item (same <code>id</code>, same <code>link</code>, or same name and type) update it instead of adding a copy. A row with no <code>name</code> only updates the item it matches by <code>id</code> or <code>link</code>, changing just the columns it has, and new types are created automatically. Export also includes wear counts and cost per wear for reference; on import those are ignored except <code>total_wears</code>, which sets the estimate to whatever logged wears don’t cover (only counting wears up to <code>as_of</code>, if given). Photos stay in the app.<br>
       <b>Wear log CSV</b> columns: <code>date, item_name</code> (or <code>item_id</code>, or the item’s <code>link</code>), optionally <code>outfit</code> to group rows into one outfit, <code>fit, fit_note</code>, and <code>not_counted</code> (yes for a day that isn’t a wear). Rows with the same date and outfit become one outfit. Imported wears are added to what you already have; a wear already logged for that item and day is skipped.</p>
     </section>`;
   const v = view();
@@ -1362,7 +1372,7 @@ function renderSettings() {
 }
 
 /* ---------- CSV ---------- */
-const ITEM_COLS = ['name', 'type', 'size', 'colors', 'materials', 'made_in', 'location', 'brand', 'store', 'tags', 'link', 'purchase_price', 'discount_price', 'purchase_date', 'estimated_past_wears', 'wear_limit', 'rest_months', 'retired', 'notes'];
+const ITEM_COLS = ['name', 'type', 'size', 'colors', 'materials', 'made_in', 'location', 'brand', 'store', 'tags', 'link', 'purchase_price', 'full_price', 'purchase_date', 'estimated_past_wears', 'wear_limit', 'rest_months', 'retired', 'notes'];
 function download(name, text, type) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -1393,7 +1403,7 @@ function itemsCSV() {
   const hdr = ['id', ...ITEM_COLS, 'tracked_wears', 'total_wears', `wears_past_${days}_days`, 'cost_per_wear', 'last_worn', 'status'];
   return toCSV([hdr, ...S.items.map(i => {
     const st = stats(i);
-    return [i.id, i.name, typeName(i.typeId), i.size || '', (i.colors || []).join(';'), (i.materials || []).join(';'), madeOf(i).join(';'), locName(i.location), brandsOf(i).join(';'), i.store, (i.tags || []).join(';'), i.link || '', i.price, i.discountPrice, i.purchaseDate, i.estWears,
+    return [i.id, i.name, typeName(i.typeId), i.size || '', (i.colors || []).join(';'), (i.materials || []).join(';'), madeOf(i).join(';'), locName(i.location), brandsOf(i).join(';'), i.store, (i.tags || []).join(';'), i.link || '', i.price, i.fullPrice ?? '', i.purchaseDate, i.estWears,
       i.limit?.wears ?? '', i.limit?.restMonths ?? '', i.retired ? 'yes' : '', i.notes,
       st.tracked, st.total, st.recent, st.cpw != null ? st.cpw.toFixed(2) : '', st.last || '', st.status];
   })]);
@@ -1421,7 +1431,7 @@ async function importItemsCSV(text) {
     const typeId = r.type || r.category || !byKey ? typeFor(r.type || r.category) : byKey.typeId;
     let it = byKey || S.items.find(i => i.name.toLowerCase() === name.toLowerCase() && i.typeId === typeId);
     const isNew = !it;
-    if (isNew) { it = { id: uid(), name, typeId, size: sizeFor(typeId), colors: [], location: '', tryOns: [], brands: [], store: '', tags: [], materials: [], madeIn: [], link: '', price: '', discountPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
+    if (isNew) { it = { id: uid(), name, typeId, size: sizeFor(typeId), colors: [], location: '', tryOns: [], brands: [], store: '', tags: [], materials: [], madeIn: [], link: '', price: '', fullPrice: '', purchaseDate: '', estWears: '', limit: null, notes: '', retired: false, photo: null, created: Date.now() }; }
     const has = k => k in r && r[k] !== '';
     if (name) it.name = name; it.typeId = typeId;
     if (has('brand') || has('brands')) { it.brands = (r.brands || r.brand).split(';').map(b => b.trim()).filter(Boolean); delete it.brand; }
@@ -1434,7 +1444,8 @@ async function importItemsCSV(text) {
     if (has('store') || has('store_purchased') || has('retailer')) it.store = r.store || r.store_purchased || r.retailer;
     if (has('tags')) it.tags = splitTags(r.tags.replace(/;/g, ','));
     const price = r.purchase_price ?? r.price; if (price) it.price = String(num(price.replace(/[$,]/g, '')) ?? '');
-    const disc = r.discount_price ?? r.price_paid; if (disc) it.discountPrice = String(num(disc.replace(/[$,]/g, '')) ?? '');
+    const full = r.full_price ?? r.list_price; if (full) it.fullPrice = String(num(full.replace(/[$,]/g, '')) ?? '');
+    const disc = r.discount_price ?? r.price_paid; if (disc) { it.discountPrice = String(num(disc.replace(/[$,]/g, '')) ?? ''); fixPrices(it); }   // older exports
     if (has('purchase_date') || has('date')) it.purchaseDate = csvDate(r.purchase_date || r.date);
     if (has('estimated_past_wears')) it.estWears = String(parseInt(r.estimated_past_wears) || 0);
     // a known total (e.g. from another app, as of the day it was exported): the estimate is whatever logged wears up to then don't cover
@@ -1516,6 +1527,7 @@ async function applySnapshot(snap) {
   const keep = { clientId: S.settings.clientId, driveFileId: S.settings.driveFileId, autoBackup: S.settings.autoBackup };
   const d = defaults();
   for (const k of COLLS) S[k] = snap.data[k] ?? d[k];
+  S.items.forEach(fixPrices);   // backups made before schema 6
   S.settings = { ...d.settings, ...S.settings, ...keep, lastBackup: Date.now() };
   logState.draft = null;
   await DB.setMany(Object.fromEntries(COLLS.map(k => [k, S[k]])));

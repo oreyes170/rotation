@@ -20,7 +20,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Storage:** IndexedDB database `rotation`, store `kv`. Each collection is saved under its own key, and `save(...keys)` writes those keys plus `settings`.
 - **Collections:**
   - **`types`:** `{id, name, limit:{wears, restMonths}|null, defaultSize, group}`. Defaults: Short-sleeve tee, Long-sleeve tee and Jersey (group "Tees"), then Work shirt, Cap, Tie, Shoes, Pants, Jacket, Other.
-  - **`items`:** `{id, name, typeId, brands[], store, size, colors[], materials[], madeIn[], location, tags[], link, price, discountPrice, purchaseDate, estWears, limit, notes, retired, photo (JPEG data URL, ~720px), tryOns:[{id,date,r,note}], created}`
+  - **`items`:** `{id, name, typeId, brands[], store, size, colors[], materials[], madeIn[], location, tags[], link, price (what was paid), fullPrice (list price, if bought on sale), purchaseDate, estWears, limit, notes, retired, photo (JPEG data URL, ~720px), tryOns:[{id,date,r,note}], created}`
   - **`entries`** (one logged outfit): `{id, date (YYYY-MM-DD), templateId, slots:[{typeId,itemId}], itemIds[], fits:{itemId:{r,note}}, noWear?:[itemId], created, imported?, planned?}`
   - **`templates`:** `{id, name, slots:[typeId]}`. The default "Daily" template is Short-sleeve tee, Work shirt, Cap, Tie.
   - **`days`:** `{date: {cover:{kind:'item',itemId}|{kind:'photo',data}}}`
@@ -36,7 +36,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Planned outfits** are entries with `planned: true`, made by logging on a future date. They never count as wears, fits, pairings or exports until marked "Wore it" (which drops the flag). The Log screen flags past plans that weren't confirmed. For a future date, `statusOn()` counts earlier plans so a plan can't break a wear limit.
 - **Type groups:** types with the same `group` share one calendar view and fill the same outfit slot, but stay separate types for data. Ungrouped types stand alone.
 - **Estimated past wears (`estWears`)** add to total wears, and to cost per wear when the setting is on. They must never affect tracked history, the "worn in past X days" count, wear limits or the calendar.
-- **Cost per wear** uses the discount price if there is one, otherwise the purchase price.
+- **Cost per wear** uses the purchase price (what was paid). Full price is only for reference. Before schema 6 the fields were list price + `discountPrice` (paid); `fixPrices()` converts old items, backups and CSVs (`discount_price` column).
 - **Wear limit:** after N tracked wears the item rests for M months (calendar months from the last counted wear), then a new cycle starts. `rotation()` recalculates this from the log every time, so editing history stays consistent. Wears logged during a rest still count toward totals but not toward the cycle. A per-item limit overrides the type's limit.
 - **Fit** has 5 levels: too-tight, snug, good, loose, too-loose, scored -2 to 2. Each item records a fit per wear (`entry.fits`) and per try-on (`item.tryOns`). Try-ons do not count as wears. The trend (recent vs earlier fits) matters.
 - **Location:** where an item is kept. The "Dressing at" choice on the Log screen filters the item picker to that place. Every "Kept at" menu has "＋ New place…" to add one on the spot.
