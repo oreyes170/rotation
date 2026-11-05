@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 63; // shown in the header; bump with CACHE in sw.js
+const VERSION = 64; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1349,7 +1349,8 @@ function renderSettings() {
     </section>
 
     <h2>Backup file</h2>
-    <section class="card"><div class="row"><button class="ghost" data-a="export" type="button">Export backup file</button>
+    <section class="card"><p class="help" style="margin-top:0">Save a copy to <b>iCloud Drive</b>: tap Save, then “Save to Files” → iCloud Drive (keep the same folder and choose Replace each time). To restore, Import and pick the file from iCloud Drive. Last saved here: ${st.lastFileBackup ? new Date(st.lastFileBackup).toLocaleString() : 'never'}.</p>
+      <div class="row"><button class="ghost" data-a="export" type="button">Save backup to Files / iCloud</button>
       <label class="ghost" style="border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--surface)">Import backup file<input type="file" accept="application/json,.json" id="importFile" hidden></label></div>
       <p class="help">${S.items.length} items · ${S.entries.length} outfits logged. Importing or restoring replaces what is on this device.</p></section>
 
@@ -1436,7 +1437,15 @@ function renderSettings() {
   $('[data-a=drvbackup]', v).onclick = () => backupNow(true);
   $('[data-a=drvrestore]', v).onclick = restoreFromDrive;
   // file backup
-  $('[data-a=export]', v).onclick = () => download(`rotation-backup-${today()}.json`, JSON.stringify(snapshot()), 'application/json');
+  $('[data-a=export]', v).onclick = async () => {
+    const text = JSON.stringify(snapshot()), name = 'rotation-backup.json';   // same name each time, so Files offers to replace the old copy
+    const file = new File([text], name, { type: 'application/json' });
+    // on the phone, the share sheet has "Save to Files" (iCloud Drive); elsewhere it's a normal download
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); } catch (e) { if (e.name === 'AbortError') return; download(name, text, 'application/json'); }
+    } else download(name, text, 'application/json');
+    S.settings.lastFileBackup = Date.now(); await DB.setMany({ settings: S.settings }); renderSettings();
+  };
   $('[data-a=csvitems]', v).onclick = () => download(`rotation-items-${today()}.csv`, itemsCSV(), 'text/csv');
   $('[data-a=csvwears]', v).onclick = () => download(`rotation-wears-${today()}.csv`, wearsCSV(), 'text/csv');
   $('[data-a=csvtemplate]', v).onclick = () => download('rotation-items-template.csv', toCSV([ITEM_COLS, ['Navy oxford', 'Work shirt', 'XL', 'navy;white', 'cotton', 'Vietnam', 'Home', 'Uniqlo', 'Uniqlo SoHo', 'work;oxford', '', '39.90', '29.90', '2025-03-14', '20', '', '', '', '']]), 'text/csv');

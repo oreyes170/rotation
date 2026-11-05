@@ -28,7 +28,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
   - **`locations`:** `{id, name}`, defaulting to Home. The owner adds their own places on the device.
   - **`purchases`:** past purchases imported from CSV, used only for auto-fill suggestions.
   - **`settings`:** `recentDays`, `cpwIncludesEstimate`, `clientId`, `driveFileId`, `autoBackup`, `lastChange`, `lastBackup`, `logLocation`, `theme`, `glass`, `cols`, `pickSort`, `tagLibrary` (extra tags to suggest, added in Setup), `schema` (data version; `load()` runs one-off upgrades when it's behind).
-- **Backup and import:** `snapshot()` / `applySnapshot()` handle JSON backups. A restore replaces everything except the Drive settings.
+- **Backup and import:** `snapshot()` / `applySnapshot()` handle JSON backups. A restore replaces everything except the Drive settings. Setup → Backup file → "Save backup to Files / iCloud" hands `rotation-backup.json` to the share sheet (`navigator.share` with a file; "Save to Files" → iCloud Drive), falling back to a download; `settings.lastFileBackup` records when. A web app can't write to iCloud by itself (CloudKit needs the paid developer account), so this is the free iCloud route.
 
 ## Rules the owner asked for (don't change without asking)
 - **Wears are derived from `entries`.** The same item is counted once per date. Use `worn()` and `counts(e, id)`, not `S.entries`/`itemIds`, for anything that counts wears.
