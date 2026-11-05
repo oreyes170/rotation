@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 59; // shown in the header; bump with CACHE in sw.js
+const VERSION = 60; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -782,7 +782,7 @@ function renderCloset() {
         ${[['active', 'Available'], ['resting', 'Resting'], ['retired', 'Retired'], ['owned', 'All owned'], ['any', 'Everything']].map(([v, l]) => `<option value="${v}" ${closet.status === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
       <select id="csort" aria-label="Sort">
-        ${[['last', 'Last worn'], ['least', 'Longest since worn'], ['most', 'Most worn'], ['fewest', 'Fewest wears'], ['recent', `Most worn in ${days}d`], ['cpw', 'Cost per wear'], ['name', 'Name'], ['added', 'Recently added']].map(([v, l]) => `<option value="${v}" ${closet.sort === v ? 'selected' : ''}>${l}</option>`).join('')}
+        ${[['last', 'Last worn'], ['least', 'Longest since worn'], ['close', 'Closest to resting'], ['most', 'Most worn'], ['fewest', 'Fewest wears'], ['recent', `Most worn in ${days}d`], ['cpw', 'Cost per wear'], ['name', 'Name'], ['added', 'Recently added']].map(([v, l]) => `<option value="${v}" ${closet.sort === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
     </div>
     <div class="toolbar" style="grid-template-columns:1fr 1fr">
@@ -807,6 +807,9 @@ function renderCloset() {
     const by = {
       last: (a, b) => (st.get(b.id).last || '').localeCompare(st.get(a.id).last || ''),
       least: (a, b) => (st.get(a.id).last || '').localeCompare(st.get(b.id).last || ''),
+      // fewest wears left in the current cycle first; resting/retired and items with no limit go last
+      close: (a, b) => { const left = i => { const s = st.get(i.id); return s.lim && s.status === 'active' ? num(s.lim.wears) - s.cycleWears : Infinity; };
+        return (left(a) - left(b) || 0) || (st.get(a.id).last || '').localeCompare(st.get(b.id).last || ''); },
       most: (a, b) => st.get(b.id).total - st.get(a.id).total,
       fewest: (a, b) => st.get(a.id).total - st.get(b.id).total,
       recent: (a, b) => st.get(b.id).recent - st.get(a.id).recent,
