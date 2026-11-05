@@ -591,6 +591,11 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
 .notnow{border:0;background:none;color:var(--muted);font-size:12px;padding:2px 0 6px;cursor:pointer;text-align:center}
 .pkcell.snoozed .item{opacity:.5}
 
+/* Closet select mode */
+.selbtn{padding:4px 12px;font-size:13px}
+.item.picked{outline:3px solid var(--accent);outline-offset:-3px;position:relative}
+.item.picked::after{content:"✓";position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;font-weight:700;font-size:14px}
+
 /* Laundry check */
 .laundrybtn{width:100%;margin:2px 0 8px;text-align:left}
 .list.laundry li{grid-template-columns:52px 1fr auto;align-items:center}

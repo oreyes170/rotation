@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 62; // shown in the header; bump with CACHE in sw.js
+const VERSION = 63; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -148,7 +148,12 @@ function limitOf(i) {
 }
 /* Wear limit: after N tracked wears the item rests for M months, then a new cycle starts.
    Derived from the wear log, so editing history keeps it correct. */
-function rotation(dates, lim, asOf = today()) {
+function rotation(dates, lim, asOf = today(), man = null) {
+  // a rest set by hand ({from, until}): resting in that window; afterwards a new cycle starts from wears on/after `until`
+  if (man && man.from && man.until && asOf >= man.from) {
+    if (asOf < man.until) return { resting: true, cycleWears: 0, restUntil: man.until, manual: true };
+    dates = dates.filter(d => d >= man.until);
+  }
   if (!lim) return { resting: false, cycleWears: dates.length, restUntil: null };
   const N = num(lim.wears), M = num(lim.restMonths) || 0;
   let count = 0, restUntil = null;
@@ -171,7 +176,7 @@ function stats(item) {
   const dates = wearDates(item.id), tracked = dates.length, est = Math.max(0, num(item.estWears) || 0);
   const total = tracked + est, cost = effPrice(item);
   const base = S.settings.cpwIncludesEstimate ? total : tracked;
-  const lim = limitOf(item), rot = rotation(dates, lim);
+  const lim = limitOf(item), rot = rotation(dates, lim, today(), item.rest);
   return {
     dates, tracked, est, total, cost, lim, ...rot,
     recent: wornWithin(dates, Number(S.settings.recentDays) || 30),
@@ -196,9 +201,9 @@ function pairCount(a, b) {
 /* availability on a given day. For a future day, earlier plans count too, so a plan can't break a wear limit. */
 function statusOn(item, date) {
   if (item.retired) return 'retired';
-  if (date <= today()) return rotation(wearDates(item.id), limitOf(item), date).resting ? 'resting' : 'active';
+  if (date <= today()) return rotation(wearDates(item.id), limitOf(item), date, item.rest).resting ? 'resting' : 'active';
   const dates = [...new Set(S.entries.filter(e => counts(e, item.id) && (!e.planned || e.date < date)).map(e => e.date))].sort();
-  return rotation(dates, limitOf(item), date).resting ? 'resting' : 'active';
+  return rotation(dates, limitOf(item), date, item.rest).resting ? 'resting' : 'active';
 }
 const nextPlan = itemId => S.entries.filter(e => e.planned && e.date >= today() && e.itemIds.includes(itemId)).map(e => e.date).sort()[0];
 const FITS = [['too-tight', 'Too tight', -2], ['snug', 'Snug', -1], ['good', 'Just right', 0], ['loose', 'Loose', 1], ['too-loose', 'Too loose', 2]];
@@ -552,6 +557,7 @@ function readImage(file, max = 720) {
 let tab = 'log';
 const view = () => $('#view');
 function go(t) {
+  if (t !== 'closet') closet.sel = null;
   tab = t; $$('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   saveDock(null);
   ({ log: renderLog, closet: renderCloset, calendar: renderCalendar, settings: renderSettings })[t]();
@@ -564,8 +570,8 @@ function saveDock(info) {
   let d = $('#savedock'); document.body.classList.toggle('docked', !!info);   // extra room at the bottom of the page while it shows
   if (!info) { if (d) d.remove(); return; }
   if (!d) { d = document.createElement('div'); d.id = 'savedock'; document.body.appendChild(d); }
-  d.innerHTML = `<span class="small"><b>${esc(info.label)}</b> · ${info.count} item${info.count === 1 ? '' : 's'}</span><span class="row">${info.editing ? '<button class="ghost" data-dock="canceledit" type="button">Cancel</button>' : ''}<button class="primary" data-dock="saveentry" type="button">${esc(info.button)}</button></span>`;
-  $$('[data-dock]', d).forEach(b => b.onclick = () => $(`[data-a=${b.dataset.dock}]`, view())?.click());
+  if (info.html) d.innerHTML = info.html; else d.innerHTML = `<span class="small"><b>${esc(info.label)}</b> · ${info.count} item${info.count === 1 ? '' : 's'}</span><span class="row">${info.editing ? '<button class="ghost" data-dock="canceledit" type="button">Cancel</button>' : ''}<button class="primary" data-dock="saveentry" type="button">${esc(info.button)}</button></span>`;
+  if (!info.html) $$('[data-dock]', d).forEach(b => b.onclick = () => $(`[data-a=${b.dataset.dock}]`, view())?.click());
   const place = () => { const t = $('.tabs').getBoundingClientRect(); d.style.bottom = Math.round(innerHeight - t.top + 8) + 'px'; };
   place(); requestAnimationFrame(place);
 }
@@ -759,7 +765,7 @@ function pick({ typeId, title, current, date }, cb) {
 const matchQ = (i, q) => [i.name, ...brandsOf(i), i.store, i.size, locName(i.location), typeName(i.typeId), ...(i.tags || []), ...(i.colors || []), ...(i.materials || []), ...madeOf(i)].join(' ').toLowerCase().includes(q);
 
 /* ================= CLOSET ================= */
-const closet = { chip: 'all', q: '', sort: 'last', status: 'active', loc: '', fit: '', photo: '' };
+const closet = { sel: null, chip: 'all', q: '', sort: 'last', status: 'active', loc: '', fit: '', photo: '' };
 function matchChip(item, chip) {
   if (chip === 'all') return true;
   if (chip.startsWith('t:')) return item.typeId === chip.slice(2);
@@ -790,11 +796,12 @@ function renderCloset() {
       <select id="cfit" aria-label="Fit">${[['', 'Any fit'], ['tight', 'Last fit: tight'], ['good', 'Last fit: just right'], ['loose', 'Last fit: loose'], ['unrated', 'Fit not rated']].map(([v, l]) => `<option value="${v}" ${closet.fit === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
       <select id="cphoto" aria-label="Photo">${[['', 'Any photo'], ['none', 'No photo'], ['has', 'Has photo']].map(([v, l]) => `<option value="${v}" ${closet.photo === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     </div>
-    <div class="spread" style="margin:4px 0 10px"><span class="muted small" id="ccount"></span>
+    <div class="spread" style="margin:4px 0 10px"><span class="row" style="gap:8px;flex-wrap:nowrap"><span class="muted small" id="ccount"></span><button class="ghost selbtn" data-a="select" type="button">${closet.sel ? 'Done' : 'Select'}</button></span>
       <span class="toolbar" style="margin:0;display:flex"><span class="recent">Worn in past <input type="number" min="1" id="cdays" value="${days}"> days</span></span></div>
     <div class="grid" id="cgrid"></div>
-    <button class="primary fab" data-a="add" type="button">＋ Add item</button>`;
+    ${closet.sel ? '' : '<button class="primary fab" data-a="add" type="button">＋ Add item</button>'}`;
   const v = view();
+  let shown = [];
   const draw = () => {
     let items = S.items.filter(i => matchChip(i, closet.chip));
     const st = new Map(items.map(i => [i.id, stats(i)]));
@@ -818,10 +825,24 @@ function renderCloset() {
       added: (a, b) => (b.created || 0) - (a.created || 0)
     }[closet.sort];
     items.sort((a, b) => by(a, b) || a.name.localeCompare(b.name));
+    shown = items;
     $('#ccount', v).textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
     $('#cgrid', v).innerHTML = items.map(i => itemCard(i)).join('') ||
       `<div class="empty">${S.items.length ? 'Nothing matches this view.' : 'No items yet. Add your first piece below.'}</div>`;
-    $$('[data-item]', v).forEach(b => b.onclick = () => openDetail(b.dataset.item));
+    if (closet.sel) $$('[data-item]', v).forEach(b => b.classList.toggle('picked', closet.sel.has(b.dataset.item)));
+    $$('[data-item]', v).forEach(b => b.onclick = () => {
+      if (!closet.sel) return openDetail(b.dataset.item);
+      const id = b.dataset.item; closet.sel.has(id) ? closet.sel.delete(id) : closet.sel.add(id); b.classList.toggle('picked', closet.sel.has(id)); selBar();
+    });
+    selBar();
+  };
+  // select mode: tap cards to pick several, then act on them all from the bar above the tab bar
+  const selBar = () => {
+    if (!closet.sel) return saveDock(null);
+    saveDock({ html: `<span class="small"><b>${closet.sel.size}</b> selected</span><span class="row"><button class="ghost" data-s="all" type="button">${shown.length && shown.every(i => closet.sel.has(i.id)) ? 'None' : 'All'}</button><button class="primary" data-s="act" type="button" ${closet.sel.size ? '' : 'disabled'}>Rest, move…</button></span>` });
+    const d = $('#savedock');
+    $('[data-s=all]', d).onclick = () => { const all = shown.length && shown.every(i => closet.sel.has(i.id)); shown.forEach(i => all ? closet.sel.delete(i.id) : closet.sel.add(i.id)); draw(); };
+    $('[data-s=act]', d).onclick = () => openBulk([...closet.sel], () => { closet.sel = null; renderCloset(); });
   };
   $$('[data-c]', v).forEach(b => b.onclick = () => { closet.chip = b.dataset.c; renderCloset(); });
   $('[data-a=newfilter]', v).onclick = () => editFilter(null);
@@ -833,8 +854,40 @@ function renderCloset() {
   $('#cphoto', v).onchange = e => { closet.photo = e.target.value; draw(); };
   $('#cdays', v).onchange = async e => { const n = Math.max(1, parseInt(e.target.value) || 30); S.settings.recentDays = n; await save(); renderCloset(); };
   $('[data-a=laundry]', v).onclick = openLaundry;
-  $('[data-a=add]', v).onclick = () => openEditor(null, { typeId: closet.chip.startsWith('t:') ? closet.chip.slice(2) : null });
+  $('[data-a=select]', v).onclick = () => { closet.sel = closet.sel ? null : new Set(); renderCloset(); };
+  if (!closet.sel) $('[data-a=add]', v).onclick = () => openEditor(null, { typeId: closet.chip.startsWith('t:') ? closet.chip.slice(2) : null });
   draw();
+}
+
+/* Rest, move or retire one or several items. A rest set here ({from, until} on the item) makes it resting until that
+   date whatever the wear log says; when it ends a fresh cycle starts. For items whose early wears weren't tracked. */
+function openBulk(ids, done) {
+  const items = ids.map(itemById).filter(Boolean), n = items.length, many = n > 1;
+  const manual = items.filter(i => i.rest && (i.rest.until || '') > today());
+  const months = (() => { const m = items.map(i => num(limitOf(i)?.restMonths)).filter(x => x); return m.length ? Math.max(...m) : 3; })();
+  openModal(`${head(many ? `${n} items` : items[0].name)}
+    <h2 style="margin-top:4px">Rest</h2>
+    <p class="help" style="margin-top:0">Out of the rotation until the date you pick, even if the log doesn't show enough wears. A new cycle starts after.</p>
+    <div class="chips" style="flex-wrap:wrap">${[1, 2, 3, 6].map(m => `<button class="chip ${m === months ? 'on' : ''}" data-m="${m}" type="button">${m} month${m > 1 ? 's' : ''}</button>`).join('')}</div>
+    <label class="field" style="margin-top:8px"><span>Rest until</span><input type="date" id="bUntil" value="${addMonths(today(), months)}"></label>
+    <div class="row end" style="margin-top:8px">${manual.length ? `<button class="ghost" data-a="unrest" type="button">End rest${many ? ` (${manual.length})` : ''}</button>` : ''}<button class="primary" data-a="rest" type="button">Rest ${many ? 'them' : 'it'}</button></div>
+    <h2>Kept at</h2>
+    <select id="bLoc">${locOptions(many ? '' : items[0].location).replace('<option value="">Not set</option>', `<option value="" selected>${many ? 'Move them to…' : 'Not set'}</option>`)}</select>
+    <h2>Retire</h2>
+    <div class="row">${items.some(i => !i.retired) ? `<button class="ghost" data-a="retire" type="button">Retire ${many ? 'them' : 'it'} (gone for good)</button>` : ''}${items.some(i => i.retired) ? `<button class="ghost" data-a="unretire" type="button">Bring back from retired</button>` : ''}</div>`, sh => {
+    const until = $('#bUntil', sh);
+    $$('[data-m]', sh).forEach(b => b.onclick = () => { until.value = addMonths(today(), b.dataset.m); $$('[data-m]', sh).forEach(x => x.classList.toggle('on', x === b)); });
+    const finish = async msg => { await save('items'); closeModal(); toast(msg); done && done(); };
+    $('[data-a=rest]', sh).onclick = () => {
+      if (!until.value || until.value <= today()) return toast('Pick a date after today');
+      items.forEach(i => { i.rest = { from: today(), until: until.value }; });
+      finish(`${many ? n + ' items' : items[0].name} resting until ${prettyDate(until.value)}`);
+    };
+    const un = $('[data-a=unrest]', sh); if (un) un.onclick = () => { manual.forEach(i => { delete i.rest; }); finish('Rest ended'); };
+    wireLocSelect($('#bLoc', sh), v => { if (!v && many) return; items.forEach(i => { i.location = v; }); finish(v ? `Now kept at ${locName(v)}` : 'Location cleared'); });
+    const rt = $('[data-a=retire]', sh); if (rt) twoStep(rt, 'Sure? Tap again', () => { items.forEach(i => { i.retired = true; }); finish(many ? `${n} items retired` : 'Retired'); });
+    const ur = $('[data-a=unretire]', sh); if (ur) ur.onclick = () => { items.forEach(i => { i.retired = false; }); finish('Back in the closet'); };
+  });
 }
 
 /* Laundry check: look up clothes coming out of the wash and see whether each one is resting (pack it) or can go back
@@ -874,7 +927,7 @@ function openDetail(id, range = { from: '', to: '' }) {
   const cb = combos(id, range.from, range.to);
   const groups = {}; cb.forEach(c => { (groups[c.item.typeId] ||= []).push(c); });
   const limTxt = st.lim ? `Wear ${num(st.lim.wears)}× then rest ${num(st.lim.restMonths) || 0} mo${it.limit && num(it.limit.wears) ? '' : ' (type default)'}` : 'No wear limit';
-  const rotTxt = st.status === 'retired' ? 'Retired' : st.resting ? `Resting until ${prettyDate(st.restUntil)}` : st.lim ? `${st.cycleWears} of ${num(st.lim.wears)} wears this cycle` : 'Available';
+  const rotTxt = st.status === 'retired' ? 'Retired' : st.resting ? `Resting until ${prettyDate(st.restUntil)}${st.manual ? ' (set by hand)' : ''}` : st.lim ? `${st.cycleWears} of ${num(st.lim.wears)} wears this cycle` : 'Available';
   openModal(`${head(it.name || 'Item')}
     <div class="detail-top">${thumb(it)}<div class="stack" style="gap:4px">
       <div class="muted small">${esc([typeName(it.typeId), it.size, brandsOf(it).join(' / '), it.store].filter(Boolean).join(' · '))}</div>
@@ -895,7 +948,7 @@ function openDetail(id, range = { from: '', to: '' }) {
       <div class="stat"><div class="k">Cost per wear</div><div class="v">${money(st.cpw)}</div></div>
       <div class="stat"><div class="k">Last worn</div><div class="v" style="font-size:15px">${st.last ? prettyDate(st.last) : 'Never'}</div></div>
     </div>
-    <div class="row end"><button class="ghost" data-a="edit" type="button">Edit</button><button class="primary" data-a="wore" type="button">Wore it today</button></div>
+    <div class="row end"><button class="ghost" data-a="restit" type="button">${st.manual ? 'Resting…' : 'Rest…'}</button><button class="ghost" data-a="edit" type="button">Edit</button><button class="primary" data-a="wore" type="button">Wore it today</button></div>
     <h2>Fit</h2>
     ${(() => { const fs = fitSummary(id), h = fitHistory(id).reverse();
       return (fs ? `<p class="small" style="margin:0 0 6px">Latest: <b class="fit f-${fs.last.r}">${esc(fitLabel(fs.last.r))}</b> on ${prettyDate(fs.last.date)}${fs.trend ? ` · recent fits are ${fs.trend}` : ''}</p>
@@ -909,6 +962,7 @@ function openDetail(id, range = { from: '', to: '' }) {
     <h2>Wear history</h2>
     ${st.dates.length ? `<div class="hist">${[...st.dates].reverse().map(prettyDate).join('<br>')}</div>` : '<p class="muted small">No tracked wears yet.</p>'}`, sh => {
     $('[data-a=edit]', sh).onclick = () => openEditor(it);
+    $('[data-a=restit]', sh).onclick = () => openBulk([id], () => openDetail(id, range));
     wireLocSelect($('#dLoc', sh), async v => { it.location = v; await save('items'); toast(it.location ? 'Now kept at ' + locName(it.location) : 'Location cleared'); if (tab === 'closet') refresh(); });
     $('[data-a=tryon]', sh).onclick = () => openFit({ itemId: id });
     $$('[data-fe]', sh).forEach(li => li.onclick = () => openFit({ itemId: id, entryId: li.dataset.fe }));
