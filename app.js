@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 58; // shown in the header; bump with CACHE in sw.js
+const VERSION = 59; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -701,13 +701,18 @@ function chooseCover(date) {
 }
 
 /* item picker (used by the outfit builder) */
+const PICK_SORTS = [['least', 'Longest since worn'], ['close', 'Closest to resting'], ['recent', 'Recently worn'], ['most', 'Most worn'], ['shuffle', 'Shuffle']];
 function pick({ typeId, title, current, date }, cb) {
-  let showAll = false, q = '', typeFilter = typeId, here = !!S.settings.logLocation;
+  let showAll = false, q = '', typeFilter = typeId, loc = S.settings.logLocation || '', sort = S.settings.pickSort || 'least';
+  const shuffle = new Map(S.items.map(i => [i.id, Math.random()])), on = date || today();
   openModal(`${head(title)}
     ${typeId ? '' : `<div class="chips" id="pkChips"></div>`}
     <input type="search" id="pkQ" placeholder="Search name, brand, tag" enterkeyhint="go">
-    <label class="check" style="margin:8px 0 2px"><input type="checkbox" id="pkAll"> Show resting and retired items</label>
-    ${S.settings.logLocation ? `<label class="check" style="margin:2px 0 8px"><input type="checkbox" id="pkHere" checked> Only items at ${esc(locName(S.settings.logLocation))}</label>` : ''}
+    <div class="row pkopts">
+      <select id="pkSort" aria-label="Sort">${PICK_SORTS.map(([v, l]) => `<option value="${v}" ${sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      ${S.locations.length ? `<select id="pkLoc" aria-label="Dressing at"><option value="">Anywhere</option>${S.locations.map(l => `<option value="${l.id}" ${loc === l.id ? 'selected' : ''}>At ${esc(l.name)}</option>`).join('')}</select>` : ''}
+    </div>
+    <label class="check" style="margin:8px 0 8px"><input type="checkbox" id="pkAll"> Show resting and retired items</label>
     <div class="grid" id="pkGrid"></div>
     <div class="row end">${current ? '<button class="ghost" data-a="none" type="button">Clear slot</button>' : ''}<button class="ghost" data-a="new" type="button">＋ New item</button></div>`, sh => {
     const drawChips = () => {
@@ -718,19 +723,34 @@ function pick({ typeId, title, current, date }, cb) {
     const draw = () => {
       let items = S.items.filter(i => !typeFilter || (typeId && typeFilter === typeId ? groupKey(i.typeId) === groupKey(typeId) : i.typeId === typeFilter));
       if (!showAll) items = items.filter(i => statusOn(i, date || today()) === 'active');
-      if (here) items = items.filter(i => i.location === S.settings.logLocation);
+      if (loc) items = items.filter(i => i.location === loc);
       if (q) items = items.filter(i => matchQ(i, q));
-      // least recently worn first, so the rotation stays even
-      items.sort((a, b) => (stats(a).last || '').localeCompare(stats(b).last || '') || a.name.localeCompare(b.name));
-      $('#pkGrid', sh).innerHTML = items.map(i => { const fs = fitSummary(i.id); return itemCard(i, `<div class="meta">Last worn ${stats(i).last ? prettyDate(stats(i).last) : 'never'}</div>${fs ? `<div class="meta">Fit: ${esc(fitLabel(fs.last.r))}</div>` : ''}`); }).join('')
-        || `<div class="empty">No ${showAll ? '' : 'available '}items${typeFilter ? ' of this type' : ''} yet.</div>`;
+      // default: least recently worn first, so the rotation stays even. "Not now" items go to the end.
+      const last = i => stats(i).last || '', byLeast = (a, b) => last(a).localeCompare(last(b));
+      const left = i => { const st = stats(i); return st.lim ? num(st.lim.wears) - st.cycleWears : Infinity; };
+      const by = { least: byLeast, recent: (a, b) => last(b).localeCompare(last(a)), most: (a, b) => stats(b).total - stats(a).total,
+        close: (a, b) => (left(a) - left(b) || 0) || byLeast(a, b), shuffle: (a, b) => shuffle.get(a.id) - shuffle.get(b.id) }[sort] || byLeast;
+      const snoozed = i => (i.snooze || '') > on;
+      items.sort((a, b) => snoozed(a) - snoozed(b) || by(a, b) || a.name.localeCompare(b.name));
+      $('#pkGrid', sh).innerHTML = items.map(i => {
+        const fs = fitSummary(i.id), l = left(i);
+        const card = itemCard(i, `<div class="meta">Last worn ${stats(i).last ? prettyDate(stats(i).last) : 'never'}</div>${l !== Infinity && stats(i).status === 'active' ? `<div class="meta">${l <= 1 ? 'Last wear before it rests' : `${l} wears till it rests`}</div>` : ''}${fs ? `<div class="meta">Fit: ${esc(fitLabel(fs.last.r))}</div>` : ''}`);
+        return `<div class="pkcell ${snoozed(i) ? 'snoozed' : ''}">${card}<button class="notnow" data-snooze="${i.id}" type="button">${snoozed(i) ? `Not now till ${esc(prettyDate(i.snooze).replace(/, \d{4}$/, ''))} · undo` : 'Not now'}</button></div>`;
+      }).join('') || `<div class="empty">No ${showAll ? '' : 'available '}items${typeFilter ? ' of this type' : ''} yet.</div>`;
       $$('[data-item]', sh).forEach(b => b.onclick = () => { closeModal(); cb(b.dataset.item); });
+      // "Not now": to the end of the picker for a week (tap again to undo)
+      $$('[data-snooze]', sh).forEach(b => b.onclick = async () => {
+        const it = itemById(b.dataset.snooze); it.snooze = snoozed(it) ? '' : addDays(on, 7); await save('items'); draw();
+        if (it.snooze) toast(`${it.name} moved to the end until ${prettyDate(it.snooze)}`);
+      });
     };
     $('#pkQ', sh).oninput = e => { q = e.target.value.trim().toLowerCase(); draw(); };
     // return on the keyboard picks the first match
     $('#pkQ', sh).onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const first = $('#pkGrid [data-item]', sh); if (first) first.click(); } };
     $('#pkAll', sh).onchange = e => { showAll = e.target.checked; draw(); };
-    const ph = $('#pkHere', sh); if (ph) ph.onchange = e => { here = e.target.checked; draw(); };
+    $('#pkSort', sh).onchange = async e => { sort = S.settings.pickSort = e.target.value; await save(); draw(); };
+    // same setting as "Dressing at" on the Log screen, so the two stay in step
+    const pl = $('#pkLoc', sh); if (pl) pl.onchange = async e => { loc = S.settings.logLocation = e.target.value; const ll = $('#logLoc'); if (ll) ll.value = loc; await save(); draw(); };
     const none = $('[data-a=none]', sh); if (none) none.onclick = () => { closeModal(); cb(null); };
     $('[data-a=new]', sh).onclick = () => openEditor(null, { typeId: typeFilter, onSave: id => cb(id) });
     drawChips(); draw();

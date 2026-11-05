@@ -20,14 +20,14 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Storage:** IndexedDB database `rotation`, store `kv`. Each collection is saved under its own key, and `save(...keys)` writes those keys plus `settings`.
 - **Collections:**
   - **`types`:** `{id, name, limit:{wears, restMonths}|null, defaultSize, group}`. Defaults: Short-sleeve tee, Long-sleeve tee and Jersey (group "Tees"), then Work shirt, Cap, Tie, Shoes, Pants, Jacket, Other.
-  - **`items`:** `{id, name, typeId, brands[], store, size, colors[], materials[], madeIn[], location, tags[], link, price (what was paid), fullPrice (list price, if bought on sale), purchaseDate, estWears, limit, notes, retired, photo (JPEG data URL, ~720px), tryOns:[{id,date,r,note}], created}`
+  - **`items`:** `{id, name, typeId, brands[], store, size, colors[], materials[], madeIn[], location, tags[], link, price (what was paid), fullPrice (list price, if bought on sale), purchaseDate, estWears, limit, notes, retired, snooze (picker "Not now" until this date), photo (JPEG data URL, ~720px), tryOns:[{id,date,r,note}], created}`
   - **`entries`** (one logged outfit): `{id, date (YYYY-MM-DD), templateId, slots:[{typeId,itemId}], itemIds[], fits:{itemId:{r,note}}, noWear?:[itemId], created, imported?, planned?}`
   - **`templates`:** `{id, name, slots:[typeId]}`. The default "Daily" template is Short-sleeve tee, Work shirt, Cap, Tie.
   - **`days`:** `{date: {cover:{kind:'item',itemId}|{kind:'photo',data}}}`
   - **`filters`:** `{id, name, typeIds[], tags[]}`. These are quick filters; every type also gets its own chip.
   - **`locations`:** `{id, name}`, defaulting to Home. The owner adds their own places on the device.
   - **`purchases`:** past purchases imported from CSV, used only for auto-fill suggestions.
-  - **`settings`:** `recentDays`, `cpwIncludesEstimate`, `clientId`, `driveFileId`, `autoBackup`, `lastChange`, `lastBackup`, `logLocation`, `theme`, `glass`, `cols`, `tagLibrary` (extra tags to suggest, added in Setup), `schema` (data version; `load()` runs one-off upgrades when it's behind).
+  - **`settings`:** `recentDays`, `cpwIncludesEstimate`, `clientId`, `driveFileId`, `autoBackup`, `lastChange`, `lastBackup`, `logLocation`, `theme`, `glass`, `cols`, `pickSort`, `tagLibrary` (extra tags to suggest, added in Setup), `schema` (data version; `load()` runs one-off upgrades when it's behind).
 - **Backup and import:** `snapshot()` / `applySnapshot()` handle JSON backups. A restore replaces everything except the Drive settings.
 
 ## Rules the owner asked for (don't change without asking)
@@ -47,7 +47,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 - **Photo import** (Setup → Photos) matches image files by item name or by the ID at the end of the item's `link`, or reads a photo pack `{app:'rotation-photos', photos:[{link?, name?, data}]}`. Existing photos are kept unless "Replace" is ticked.
 - **Tags** are entered as chips. Known tags (on items, plus `tagLibrary`) are suggested as you type, including close spellings, and an unknown tag is marked "new" so typos stand out.
 - **Retired** means gone for good and is set by hand. **Resting** is temporary and comes from the wear limit.
-- **The item picker** hides resting and retired items by default and sorts by least recently worn.
+- **The item picker** hides resting and retired items by default. It sorts by longest since worn unless another sort is picked (`PICK_SORTS`: closest to resting = fewest wears left in the cycle, recently worn, most worn, shuffle; remembered in `settings.pickSort`). Its place menu is the same setting as Log's "Dressing at" (`settings.logLocation`). Each card has "Not now", which sends the item to the end of the picker for a week (`item.snooze`, a date; tap again to undo).
 - **Laundry check** (button at the top of Closet, `openLaundry`): a lookup for clothes coming out of the wash. With no search it lists what was worn in the last two weeks; search covers every item, resting and retired too. Each row says "Pack it" (resting, until when), "Drawer" (with wears left in the cycle) or "Retired", and has the item's Kept at menu so a packed item's place can be changed on the spot.
 - **Auto-fill:**
   - Type is guessed from words in the name.

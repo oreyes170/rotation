@@ -563,6 +563,14 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
 [data-theme="ocarina"] .cal-cell.today{outline:2px solid #f2c230;box-shadow:0 0 10px rgba(242,194,48,.6)}
 [data-theme="ocarina"] input[type=checkbox]{accent-color:#f2c230}
 
+/* item picker: sort + place menus, "Not now" under each card */
+.pkopts{gap:8px;margin-top:8px}
+.pkopts select{flex:1;min-width:0}
+.pkcell{display:flex;flex-direction:column;gap:4px;min-width:0}
+.pkcell .item{flex:1}
+.notnow{border:0;background:none;color:var(--muted);font-size:12px;padding:2px 0 6px;cursor:pointer;text-align:center}
+.pkcell.snoozed .item{opacity:.5}
+
 /* Laundry check */
 .laundrybtn{width:100%;margin:2px 0 8px;text-align:left}
 .list.laundry li{grid-template-columns:52px 1fr auto;align-items:center}
