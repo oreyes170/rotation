@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 64; // shown in the header; bump with CACHE in sw.js
+const VERSION = 65; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -798,6 +798,7 @@ function renderCloset() {
     </div>
     <div class="spread" style="margin:4px 0 10px"><span class="row" style="gap:8px;flex-wrap:nowrap"><span class="muted small" id="ccount"></span><button class="ghost selbtn" data-a="select" type="button">${closet.sel ? 'Done' : 'Select'}</button></span>
       <span class="toolbar" style="margin:0;display:flex"><span class="recent">Worn in past <input type="number" min="1" id="cdays" value="${days}"> days</span></span></div>
+    <div class="hiddenhint" id="chidden" hidden></div>
     <div class="grid" id="cgrid"></div>
     ${closet.sel ? '' : '<button class="primary fab" data-a="add" type="button">＋ Add item</button>'}`;
   const v = view();
@@ -826,6 +827,15 @@ function renderCloset() {
     }[closet.sort];
     items.sort((a, b) => by(a, b) || a.name.localeCompare(b.name));
     shown = items;
+    // searching: say when other items match but the filters hide them (resting, retired, another place or type), so nothing looks deleted
+    const hb = $('#chidden', v), ids = new Set(items.map(i => i.id));
+    const hidden = closet.q ? S.items.filter(i => !ids.has(i.id) && matchQ(i, closet.q)) : [];
+    if (hidden.length) {
+      const why = {}; hidden.forEach(i => { const s = stats(i).status; const k = s === 'active' ? 'hidden by other filters' : s; why[k] = (why[k] || 0) + 1; });
+      hb.innerHTML = `<span>${hidden.length} more match${hidden.length === 1 ? 'es' : ''} <span class="muted">(${Object.entries(why).map(([k, n]) => `${n} ${k}`).join(', ')})</span></span><button class="ghost" data-a="showhidden" type="button">Show</button>`;
+      hb.hidden = false;
+      $('[data-a=showhidden]', hb).onclick = () => { Object.assign(closet, { chip: 'all', status: 'any', loc: '', photo: '', fit: '' }); renderCloset(); };
+    } else hb.hidden = true;
     $('#ccount', v).textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
     $('#cgrid', v).innerHTML = items.map(i => itemCard(i)).join('') ||
       `<div class="empty">${S.items.length ? 'Nothing matches this view.' : 'No items yet. Add your first piece below.'}</div>`;

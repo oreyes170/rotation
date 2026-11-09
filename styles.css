@@ -591,6 +591,11 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
 .notnow{border:0;background:none;color:var(--muted);font-size:12px;padding:2px 0 6px;cursor:pointer;text-align:center}
 .pkcell.snoozed .item{opacity:.5}
 
+/* Closet: "N more match" when a search is hidden by the filters */
+.hiddenhint{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;padding:8px 8px 8px 12px;border-radius:12px;background:var(--rest-bg);color:var(--fg);font-size:13px}
+.hiddenhint[hidden]{display:none}
+.hiddenhint button{padding:5px 12px;flex:none}
+
 /* Closet select mode */
 .selbtn{padding:4px 12px;font-size:13px}
 .item.picked{outline:3px solid var(--accent);outline-offset:-3px;position:relative}
