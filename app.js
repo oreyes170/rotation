@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 65; // shown in the header; bump with CACHE in sw.js
+const VERSION = 66; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -195,8 +195,8 @@ function combos(itemId, from, to) {
   return [...m].map(([id, ds]) => ({ item: itemById(id), n: ds.size, last: [...ds].sort().pop() }))
     .filter(x => x.item).sort((a, b) => b.n - a.n || (b.last > a.last ? 1 : -1));
 }
-function pairCount(a, b) {
-  const s = new Set(); for (const e of worn()) if (counts(e, a) && counts(e, b)) s.add(e.date); return s.size;
+function pairCount(a, b, skipId = null) {   // skipId: the outfit being edited, which mustn't count as "before"
+  const s = new Set(); for (const e of worn()) if (e.id !== skipId && counts(e, a) && counts(e, b)) s.add(e.date); return s.size;
 }
 /* availability on a given day. For a future day, earlier plans count too, so a plan can't break a wear limit. */
 function statusOn(item, date) {
@@ -611,7 +611,7 @@ function renderLog() {
   const chosen = [...dr.slots.map(s => s.itemId), ...dr.extra].filter(Boolean);
   const pairs = [];
   for (let a = 0; a < chosen.length; a++) for (let b = a + 1; b < chosen.length; b++) {
-    const n = pairCount(chosen[a], chosen[b]); if (n) pairs.push(`<b>${esc(itemById(chosen[a]).name)}</b> + <b>${esc(itemById(chosen[b]).name)}</b>: ${n}×`);
+    const n = pairCount(chosen[a], chosen[b], dr.editingId); if (n) pairs.push(`<b>${esc(itemById(chosen[a]).name)}</b> + <b>${esc(itemById(chosen[b]).name)}</b>: ${n}×`);
   }
   view().innerHTML = `
     <section class="daybar"><button class="icon" data-a="prev" type="button" aria-label="Previous day">‹</button>
