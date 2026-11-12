@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 66; // shown in the header; bump with CACHE in sw.js
+const VERSION = 67; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -788,7 +788,7 @@ function renderCloset() {
         ${[['active', 'Available'], ['resting', 'Resting'], ['retired', 'Retired'], ['owned', 'All owned'], ['any', 'Everything']].map(([v, l]) => `<option value="${v}" ${closet.status === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
       <select id="csort" aria-label="Sort">
-        ${[['last', 'Last worn'], ['least', 'Longest since worn'], ['close', 'Closest to resting'], ['most', 'Most worn'], ['fewest', 'Fewest wears'], ['recent', `Most worn in ${days}d`], ['cpw', 'Cost per wear'], ['name', 'Name'], ['added', 'Recently added']].map(([v, l]) => `<option value="${v}" ${closet.sort === v ? 'selected' : ''}>${l}</option>`).join('')}
+        ${[['last', 'Last worn'], ['least', 'Longest since worn'], ['close', 'Closest to resting'], ['most', 'Most worn'], ['fewest', 'Fewest wears'], ['recent', `Most worn in ${days}d`], ['cpw', 'Cost per wear'], ['name', 'Name'], ['bought', 'Newest purchases'], ['added', 'Recently added']].map(([v, l]) => `<option value="${v}" ${closet.sort === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
     </div>
     <div class="toolbar" style="grid-template-columns:1fr 1fr">
@@ -823,6 +823,8 @@ function renderCloset() {
       recent: (a, b) => st.get(b.id).recent - st.get(a.id).recent,
       cpw: (a, b) => (st.get(b.id).cpw ?? -1) - (st.get(a.id).cpw ?? -1),
       name: (a, b) => a.name.localeCompare(b.name),
+      // by purchase date, newest first; items with no date go last
+      bought: (a, b) => (b.purchaseDate || '').localeCompare(a.purchaseDate || ''),
       added: (a, b) => (b.created || 0) - (a.created || 0)
     }[closet.sort];
     items.sort((a, b) => by(a, b) || a.name.localeCompare(b.name));
