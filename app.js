@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 67; // shown in the header; bump with CACHE in sw.js
+const VERSION = 68; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -489,9 +489,31 @@ function distinct(field) { return [...new Set(S.items.map(i => (i[field] || '').
 function allColours() { const s = new Set(PALETTE.map(p => p[0])); S.items.forEach(i => (i.colors || []).forEach(c => s.add(c))); return [...s].sort(); }
 
 /* ---------- small renderers ---------- */
+/* No photo: the item's initials, coloured like the item. The first colour fills the box and the next colour that
+   stands out against it is the letters (a black tee with red print: red letters on black); if none does, black or white. */
+const COLOUR_ALIASES = { bordeaux: 'burgundy', maroon: 'burgundy', wine: 'burgundy', 'baby blue': 'light blue', 'sky blue': 'light blue', turquoise: 'teal',
+  aqua: 'teal', lavender: [180, 160, 220], lilac: [180, 160, 220], beige: 'tan', khaki: 'tan', ecru: 'cream', 'off-white': 'cream', ivory: 'cream',
+  denim: [70, 100, 150], charcoal: [60, 62, 66], silver: 'light grey', gray: 'grey', 'light gray': 'light grey', mustard: 'gold', coral: [240, 120, 100],
+  'dark green': [25, 80, 40], 'forest green': [25, 80, 40], mint: [160, 220, 190], sand: 'tan', camel: [190, 140, 80], rust: [170, 75, 35], magenta: [200, 40, 130], fuchsia: [200, 40, 130] };
+function colourRGB(name) {
+  let n = String(name || '').trim().toLowerCase(), v = COLOUR_ALIASES[n];
+  if (Array.isArray(v)) return v; if (v) n = v;
+  const p = PALETTE.find(c => c[0] === n); return p ? p.slice(1) : null;
+}
+function phColours(item) {
+  const cs = (item.colors || []).map(colourRGB).filter(Boolean);
+  if (!cs.length) return null;
+  const bg = cs[0], lum = c => (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255, far = c => { const ld = Math.abs(lum(c) - lum(bg)); return ld > .3 || (ld > .22 && Math.hypot(c[0] - bg[0], c[1] - bg[1], c[2] - bg[2]) > 160); };
+  const fg = cs.slice(1).find(far) || (lum(bg) > .55 ? [25, 25, 28] : [250, 250, 248]);
+  return { bg: `rgb(${bg.join(',')})`, fg: `rgb(${fg.join(',')})` };
+}
+function phHtml(item, cls = '') {
+  const c = phColours(item);
+  return c ? `<div class="thumb ${cls}" style="background:${c.bg}"><span class="ph" style="color:${c.fg}">${esc(initials(item.name))}</span>` : `<div class="thumb ${cls}"><span class="ph">${esc(initials(item.name))}</span>`;
+}
 function thumb(item, cls = '') {
   if (!item) return `<div class="thumb ${cls}"><span class="ph">—</span></div>`;
-  return `<div class="thumb ${cls}">${item.photo ? `<img src="${item.photo}" alt="" loading="lazy">` : `<span class="ph">${esc(initials(item.name))}</span>`}</div>`;
+  return item.photo ? `<div class="thumb ${cls}"><img src="${item.photo}" alt="" loading="lazy"></div>` : `${phHtml(item, cls)}</div>`;
 }
 function photoThumb(src) { return `<div class="thumb">${src ? `<img src="${src}" alt="">` : '<span class="ph">—</span>'}</div>`; }
 function statusBadge(st, item) {
@@ -503,7 +525,7 @@ function statusBadge(st, item) {
 function itemCard(item, extra = '') {
   const st = stats(item); const days = Number(S.settings.recentDays) || 30;
   return `<button class="item" data-item="${item.id}" type="button">
-    <div class="thumb">${item.photo ? `<img src="${item.photo}" alt="" loading="lazy">` : `<span class="ph">${esc(initials(item.name))}</span>`}${statusBadge(st, item)}</div>
+    ${item.photo ? `<div class="thumb"><img src="${item.photo}" alt="" loading="lazy">` : phHtml(item)}${statusBadge(st, item)}</div>
     <div class="body"><div class="name">${esc(item.name || 'Untitled')}</div>
       <div class="meta">${esc([typeName(item.typeId), brandsOf(item).join(' / ')].filter(Boolean).join(' · '))}</div>
       <div class="nums">${st.total} wear${st.total === 1 ? '' : 's'} · ${st.recent} in ${days}d${st.cpw != null ? ' · ' + money(st.cpw) + '/wear' : ''}</div>${extra}
