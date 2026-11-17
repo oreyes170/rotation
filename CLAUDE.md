@@ -19,7 +19,7 @@ Live site: https://oreyes170.github.io/rotation/ (GitHub Pages, `main` branch, r
 ## Data model (`app.js`)
 - **Storage:** IndexedDB database `rotation`, store `kv`. Each collection is saved under its own key, and `save(...keys)` writes those keys plus `settings`.
 - **Collections:**
-  - **`types`:** `{id, name, limit:{wears, restMonths}|null, defaultSize, group}`. Defaults: Short-sleeve tee, Long-sleeve tee and Jersey (group "Tees"), then Work shirt, Cap, Tie, Shoes, Pants, Jacket, Other.
+  - **`types`:** `{id, name, limit:{wears, restMonths}|null, defaultSize, group, noPairs?}`. `noPairs` (Setup checkbox "Leave out of Worn together before") drops that type's items from the Log screen's worn-together line, e.g. undershirts and shoes. Defaults: Short-sleeve tee, Long-sleeve tee and Jersey (group "Tees"), then Work shirt, Cap, Tie, Shoes, Pants, Jacket, Other.
   - **`items`:** `{id, name, typeId, brands[], store, size, colors[], materials[], madeIn[], location, tags[], link, price (what was paid), fullPrice (list price, if bought on sale), purchaseDate, estWears, limit, notes, retired, snooze (picker "Not now" until this date), rest ({from, until}, a rest set by hand), photo (JPEG data URL, ~720px), tryOns:[{id,date,r,note}], created}`
   - **`entries`** (one logged outfit): `{id, date (YYYY-MM-DD), templateId, slots:[{typeId,itemId}], itemIds[], fits:{itemId:{r,note}}, noWear?:[itemId], created, imported?, planned?}`
   - **`templates`:** `{id, name, slots:[typeId]}`. The default "Daily" template is Short-sleeve tee, Work shirt, Cap, Tie.

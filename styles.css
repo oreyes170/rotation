@@ -212,6 +212,7 @@ body.docked main{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
 .set-row{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.4fr) minmax(0,.8fr) minmax(0,.8fr) 38px;gap:6px;align-items:end;padding:8px 0;border-bottom:1px solid var(--line)}
 .set-row > .field:first-child{grid-column:1/5}
 .set-row > button{grid-area:1/5}
+.set-row > .nopairs{grid-column:1/-1;margin:2px 0 0;color:var(--muted)}
 .tpl-slots{display:flex;flex-direction:column;gap:6px;margin:8px 0}
 .tpl-slots .row select{flex:1}
 .help{font-size:13px;color:var(--muted);line-height:1.5}

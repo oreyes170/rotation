@@ -1,7 +1,7 @@
 /* Rotation — offline wardrobe and wear tracker. All data lives in this browser (IndexedDB),
    with optional backup to the user's own Google Drive. */
 'use strict';
-const VERSION = 68; // shown in the header; bump with CACHE in sw.js
+const VERSION = 69; // shown in the header; bump with CACHE in sw.js
 
 /* ---------- helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -631,9 +631,9 @@ function renderLog() {
   };
   const extraHtml = (id, i) => { const it = itemById(id); return `<button class="slot filled" data-extra="${i}" type="button"><span class="st">${esc(typeName(it?.typeId))}</span>${thumb(it)}<span>${esc(it?.name)}</span></button>`; };
   const chosen = [...dr.slots.map(s => s.itemId), ...dr.extra].filter(Boolean);
-  const pairs = [];
-  for (let a = 0; a < chosen.length; a++) for (let b = a + 1; b < chosen.length; b++) {
-    const n = pairCount(chosen[a], chosen[b], dr.editingId); if (n) pairs.push(`<b>${esc(itemById(chosen[a]).name)}</b> + <b>${esc(itemById(chosen[b]).name)}</b>: ${n}×`);
+  const pairs = [], pairable = chosen.filter(id => !typeById(itemById(id)?.typeId)?.noPairs);   // types like undershirts and shoes can be left out
+  for (let a = 0; a < pairable.length; a++) for (let b = a + 1; b < pairable.length; b++) {
+    const n = pairCount(pairable[a], pairable[b], dr.editingId); if (n) pairs.push(`<b>${esc(itemById(pairable[a]).name)}</b> + <b>${esc(itemById(pairable[b]).name)}</b>: ${n}×`);
   }
   view().innerHTML = `
     <section class="daybar"><button class="icon" data-a="prev" type="button" aria-label="Previous day">‹</button>
@@ -1326,6 +1326,7 @@ function renderSettings() {
         <label class="field"><span>Group</span><input data-f="group" list="dlGroup" value="${esc(t.group || '')}" placeholder="—"></label>
         <label class="field"><span>Limit</span><input type="number" min="1" data-f="w" value="${esc(t.limit?.wears ?? '')}" placeholder="none"></label>
         <label class="field"><span>Rest mo</span><input type="number" min="0" data-f="m" value="${esc(t.limit?.restMonths ?? '')}" placeholder="0"></label>
+        <label class="check small nopairs"><input type="checkbox" data-f="np" ${t.noPairs ? 'checked' : ''}> Leave out of “Worn together before”</label>
         <button class="icon" data-deltype="${t.id}" type="button" title="${used(t.id) ? 'In use by ' + used(t.id) + ' items' : 'Delete type'}" aria-label="Delete type" ${used(t.id) ? 'disabled' : ''}>✕</button></div>`).join('')}
       <datalist id="dlGroup">${[...new Set(S.types.map(t => t.group).filter(Boolean))].map(g => `<option value="${esc(g)}">`).join('')}</datalist>
       <div class="row end"><button class="ghost" data-a="addtype" type="button">＋ Add type</button></div></section>
@@ -1407,7 +1408,7 @@ function renderSettings() {
       const name = $('[data-f=name]', row).value.trim(); if (name) t.name = name;
       t.defaultSize = $('[data-f=size]', row).value.trim(); t.group = $('[data-f=group]', row).value.trim();
       const w = num($('[data-f=w]', row).value), m = num($('[data-f=m]', row).value);
-      t.limit = w ? { wears: w, restMonths: m || 0 } : null; await save('types');
+      t.limit = w ? { wears: w, restMonths: m || 0 } : null; t.noPairs = $('[data-f=np]', row).checked; await save('types');
     });
   });
   $$('[data-deltype]', v).forEach(b => twoStep(b, '?', async () => {
