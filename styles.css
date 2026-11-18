@@ -602,6 +602,45 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px
 .item.picked{outline:3px solid var(--accent);outline-offset:-3px;position:relative}
 .item.picked::after{content:"✓";position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;font-weight:700;font-size:14px}
 
+/* ===== Sunset Coast theme (after a neon beach-city sunset): lavender-to-peach sky, palm silhouettes, deep purple
+   header and tab bar, hot pink-to-orange buttons, cyan neon highlights. Original drawing, no logos or game art ===== */
+:root[data-theme="sunset"]{
+  --bg:#f3dff0; --surface:rgba(255,248,252,.92); --surface2:#f6e6f3; --fg:#2c1838; --muted:#7b6487; --line:#e2c6df;
+  --accent:#e0458f; --accent-fg:#fff; --tag:#c2306f; --ok:#118a8a; --warn:#d0661e; --danger:#c62850;
+  --rest-bg:#ffe4d2; --ok-bg:#d6f4f2; --radius:14px; --shadow:0 6px 18px rgba(80,30,90,.18); color-scheme:light;
+  --neon:#5ce6ec; --hot:linear-gradient(90deg,#ff4f9a,#ff8a4c); --night:#2a1844;
+}
+[data-theme="sunset"] body{background:
+    url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 400%22%3E%3Cg fill=%22%233a2458%22%3E%3Cpath d=%22M96 400 C100 300 112 220 126 150 L132 152 C120 222 110 300 108 400 Z%22/%3E%3Cpath d=%22M128 150 C100 120 60 118 20 140 C60 126 96 132 126 156Z%22/%3E%3Cpath d=%22M128 150 C110 110 80 90 40 92 C80 100 106 120 124 156Z%22/%3E%3Cpath d=%22M130 150 C130 106 150 76 180 60 C158 84 142 112 134 154Z%22/%3E%3Cpath d=%22M130 150 C160 126 190 128 200 150 C180 140 156 140 132 156Z%22/%3E%3Cpath d=%22M130 152 C150 156 176 176 186 210 C170 184 150 170 128 158Z%22/%3E%3Cpath d=%22M128 152 C104 160 84 182 78 214 C92 188 108 170 130 158Z%22/%3E%3C/g%3E%3C/svg%3E") no-repeat right -40px bottom 40px/150px 300px,
+    url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 400%22%3E%3Cg fill=%22%233a2458%22%3E%3Cpath d=%22M96 400 C100 300 112 220 126 150 L132 152 C120 222 110 300 108 400 Z%22/%3E%3Cpath d=%22M128 150 C100 120 60 118 20 140 C60 126 96 132 126 156Z%22/%3E%3Cpath d=%22M128 150 C110 110 80 90 40 92 C80 100 106 120 124 156Z%22/%3E%3Cpath d=%22M130 150 C130 106 150 76 180 60 C158 84 142 112 134 154Z%22/%3E%3Cpath d=%22M130 150 C160 126 190 128 200 150 C180 140 156 140 132 156Z%22/%3E%3Cpath d=%22M130 152 C150 156 176 176 186 210 C170 184 150 170 128 158Z%22/%3E%3Cpath d=%22M128 152 C104 160 84 182 78 214 C92 188 108 170 130 158Z%22/%3E%3C/g%3E%3C/svg%3E") no-repeat left -60px bottom 10px/120px 240px,
+    radial-gradient(60% 18% at 50% 74%,rgba(255,214,160,.85),transparent 70%),
+    linear-gradient(180deg,#7d6fc4 0%,#a985d0 28%,#e88cbe 55%,#f7b18c 78%,#fcd1a4 100%) fixed #e88cbe;
+  font-family:"Avenir Next","Futura",system-ui,-apple-system,sans-serif}
+[data-theme="sunset"] .top{background:linear-gradient(90deg,#2a1844,#4b2368 60%,#6a2a78);border-bottom:2px solid var(--neon);box-shadow:0 2px 14px rgba(92,230,236,.35)}
+[data-theme="sunset"] .top h1{font-weight:900;font-style:italic;letter-spacing:.02em;font-size:23px;background:linear-gradient(180deg,#ffd6a0,#ff7aa8 60%,#ff4f9a);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 1px 0 #1a0b2a)}
+[data-theme="sunset"] .ver{color:#c9b6e6}
+[data-theme="sunset"] .sync{background:rgba(255,255,255,.08);border-color:var(--neon);color:#e9fbff}
+[data-theme="sunset"] h2{color:#fff;font-weight:800;letter-spacing:.1em;text-shadow:0 1px 6px rgba(60,20,80,.45)}
+[data-theme="sunset"] main > .spread,[data-theme="sunset"] main > .spread .muted,[data-theme="sunset"] .recent,[data-theme="sunset"] #ccount,
+[data-theme="sunset"] .calhead .mname,[data-theme="sunset"] .cal .dow,[data-theme="sunset"] main > .help{color:#fff;text-shadow:0 1px 4px rgba(60,20,80,.5)}
+[data-theme="sunset"] main input,[data-theme="sunset"] main select,[data-theme="sunset"] main button{color:var(--fg);text-shadow:none}
+[data-theme="sunset"] .card,[data-theme="sunset"] .item,[data-theme="sunset"] .stat{border:1px solid rgba(255,255,255,.8);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+[data-theme="sunset"] .sheet,[data-theme="sunset"] .sheet-head{background:#fbeef7}
+[data-theme="sunset"] .sheet{border-top:3px solid var(--neon)}
+[data-theme="sunset"] .sheet-head h2{color:var(--night);text-shadow:none}
+[data-theme="sunset"] button.primary,[data-theme="sunset"] .fab{background:var(--hot);border:0;color:#fff;font-weight:800;border-radius:999px;box-shadow:0 4px 14px rgba(255,79,154,.45)}
+[data-theme="sunset"] button.ghost,[data-theme="sunset"] button.danger{border-radius:999px}
+[data-theme="sunset"] .chip.on{background:var(--night);border-color:var(--night);color:var(--neon)}
+[data-theme="sunset"] .tabs{background:linear-gradient(180deg,rgba(52,26,80,.96),rgba(30,14,48,.96));border-top:2px solid var(--neon)}
+[data-theme="sunset"] .tabs button{color:#cdb8e8}
+[data-theme="sunset"] .tabs button.on{background:var(--hot);color:#fff;font-weight:800;box-shadow:0 0 14px rgba(255,79,154,.6)}
+[data-glass][data-theme="sunset"] .tabs{border:1.5px solid rgba(92,230,236,.8);box-shadow:0 10px 30px rgba(40,10,60,.45),0 0 16px rgba(92,230,236,.35)}
+[data-glass][data-theme="sunset"] .tabs::after{background:radial-gradient(120% 60% at 30% 0%,rgba(255,255,255,.1),transparent 55%)}
+[data-glass][data-theme="sunset"] #savedock{background:rgba(42,24,68,.94);color:#fff;box-shadow:0 0 0 1.5px var(--neon),0 8px 24px rgba(40,10,60,.45)}
+[data-theme="sunset"] .badge{background:var(--night);color:var(--neon)}
+[data-theme="sunset"] .cal-cell.today{outline:2px solid var(--neon);box-shadow:0 0 10px rgba(92,230,236,.7)}
+[data-theme="sunset"] input[type=checkbox]{accent-color:#e0458f}
+
 /* Laundry check */
 .laundrybtn{width:100%;margin:2px 0 8px;text-align:left}
 .list.laundry li{grid-template-columns:52px 1fr auto;align-items:center}
